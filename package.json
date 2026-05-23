@@ -1,0 +1,179 @@
+{
+  "name": "ollama-coder",
+  "displayName": "Ollama Coder",
+  "description": "Code with a local Ollama LLM: inline completion, chat sidebar, explain/refactor/fix/tests/docstrings on selection.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Ollama Coder",
+      "properties": {
+        "ollamaCoder.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "URL of the local Ollama server."
+        },
+        "ollamaCoder.chatModel": {
+          "type": "string",
+          "default": "llama3.1:8b-instruct",
+          "description": "Ollama model used for chat / code actions."
+        },
+        "ollamaCoder.completionModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:1.5b-base",
+          "description": "Ollama model used for inline code completion (a base/FIM model is recommended)."
+        },
+        "ollamaCoder.enableInlineCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable ghost-text inline completion."
+        },
+        "ollamaCoder.completionDebounceMs": {
+          "type": "number",
+          "default": 250,
+          "description": "Delay before requesting an inline completion (ms)."
+        },
+        "ollamaCoder.maxCompletionTokens": {
+          "type": "number",
+          "default": 128,
+          "description": "Maximum tokens for an inline completion."
+        },
+        "ollamaCoder.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Sampling temperature for code actions and completions."
+        },
+        "ollamaCoder.contextWindowChars": {
+          "type": "number",
+          "default": 4000,
+          "description": "Max characters of file context sent to the model."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ollamaCoder.openChat",
+        "title": "Ollama Coder: Open Chat"
+      },
+      {
+        "command": "ollamaCoder.selectChatModel",
+        "title": "Ollama Coder: Select Chat Model"
+      },
+      {
+        "command": "ollamaCoder.selectCompletionModel",
+        "title": "Ollama Coder: Select Completion Model"
+      },
+      {
+        "command": "ollamaCoder.explainSelection",
+        "title": "Ollama Coder: Explain Selection"
+      },
+      {
+        "command": "ollamaCoder.refactorSelection",
+        "title": "Ollama Coder: Refactor Selection"
+      },
+      {
+        "command": "ollamaCoder.fixSelection",
+        "title": "Ollama Coder: Fix Selection"
+      },
+      {
+        "command": "ollamaCoder.addDocstrings",
+        "title": "Ollama Coder: Add Docstrings/Comments"
+      },
+      {
+        "command": "ollamaCoder.generateTests",
+        "title": "Ollama Coder: Generate Unit Tests"
+      },
+      {
+        "command": "ollamaCoder.askAboutSelection",
+        "title": "Ollama Coder: Ask About Selection..."
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ollamaCoder",
+          "title": "Ollama Coder",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ollamaCoder": [
+        {
+          "id": "ollamaCoder.chatView",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "ollamaCoder.editorSubmenu",
+          "when": "editorHasSelection",
+          "group": "1_modification"
+        }
+      ],
+      "ollamaCoder.editorSubmenu": [
+        { "command": "ollamaCoder.explainSelection" },
+        { "command": "ollamaCoder.refactorSelection" },
+        { "command": "ollamaCoder.fixSelection" },
+        { "command": "ollamaCoder.addDocstrings" },
+        { "command": "ollamaCoder.generateTests" },
+        { "command": "ollamaCoder.askAboutSelection" }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "ollamaCoder.editorSubmenu",
+        "label": "Ollama Coder"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "ollamaCoder.openChat",
+        "key": "ctrl+alt+o",
+        "mac": "cmd+alt+o"
+      },
+      {
+        "command": "ollamaCoder.explainSelection",
+        "key": "ctrl+alt+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "ollamaCoder.refactorSelection",
+        "key": "ctrl+alt+r",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package -o ollama-coder.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/local/ollama-coder-vscode"
+  }
+}

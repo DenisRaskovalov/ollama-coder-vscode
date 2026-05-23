@@ -15,8 +15,14 @@ export interface GenerateOptions {
 }
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Only for role='tool': name of the tool whose result this is. */
+  tool_name?: string;
+  /** Only for role='assistant': tool calls returned by the model. */
+  tool_calls?: Array<{
+    function: { name: string; arguments: Record<string, any> };
+  }>;
 }
 
 export interface ChatOptions {
@@ -25,7 +31,14 @@ export interface ChatOptions {
   messages: ChatMessage[];
   temperature?: number;
   numPredict?: number;
+  /** Tool/function-calling schemas. When provided, the response is non-streaming. */
+  tools?: any[];
   signal?: AbortSignal;
+}
+
+export interface ChatResult {
+  content: string;
+  tool_calls: Array<{ name: string; arguments: Record<string, any> }>;
 }
 
 function request(
@@ -143,35 +156,72 @@ export async function generate(
   return out;
 }
 
-/** Streaming /api/chat. */
+/**
+ * /api/chat. Streams when `tools` is not set; otherwise runs non-streaming so we
+ * can capture any `tool_calls` from the final assistant message in one shot.
+ */
 export async function chat(
   opts: ChatOptions,
   onToken?: (t: string) => void
 ): Promise<string> {
+  const r = await chatFull(opts, onToken);
+  return r.content;
+}
+
+export async function chatFull(
+  opts: ChatOptions,
+  onToken?: (t: string) => void
+): Promise<ChatResult> {
   const url = new URL("/api/chat", opts.endpoint);
-  const body = {
+  const useTools = !!(opts.tools && opts.tools.length);
+  const body: any = {
     model: opts.model,
-    messages: opts.messages,
-    stream: true,
+    // Convert our wire-friendly ChatMessage[] to Ollama's expected shape.
+    messages: opts.messages.map((m) => {
+      const o: any = { role: m.role === "tool" ? "tool" : m.role, content: m.content };
+      if (m.tool_calls) o.tool_calls = m.tool_calls;
+      if (m.tool_name) o.name = m.tool_name;
+      return o;
+    }),
+    stream: !useTools,
     options: {
       temperature: opts.temperature ?? 0.3,
       num_predict: opts.numPredict ?? 1024,
     },
   };
+  if (useTools) body.tools = opts.tools;
+
   let out = "";
+  let toolCalls: Array<{ name: string; arguments: Record<string, any> }> = [];
+
   await request(url, body, opts.signal, (line) => {
     try {
       const j = JSON.parse(line);
-      const tok: string = j.message?.content ?? "";
+      const msg = j.message ?? {};
+      const tok: string = msg.content ?? "";
       if (tok) {
         out += tok;
         onToken?.(tok);
+      }
+      if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          const fn = tc.function ?? {};
+          let args = fn.arguments ?? {};
+          if (typeof args === "string") {
+            try {
+              args = JSON.parse(args);
+            } catch {
+              args = {};
+            }
+          }
+          toolCalls.push({ name: fn.name, arguments: args });
+        }
       }
     } catch {
       /* ignore */
     }
   });
-  return out;
+  return { content: out, tool_calls: toolCalls };
 }
 
 export async function listModels(endpoint: string): Promise<string[]> {

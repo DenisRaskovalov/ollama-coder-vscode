@@ -60,6 +60,11 @@
           "type": "number",
           "default": 4000,
           "description": "Max characters of file context sent to the model."
+        },
+        "ollamaCoder.agentMaxSteps": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum number of tool-calling steps the agent may run per turn."
         }
       }
     },
@@ -99,6 +104,10 @@
       {
         "command": "ollamaCoder.askAboutSelection",
         "title": "Ollama Coder: Ask About Selection..."
+      },
+      {
+        "command": "ollamaCoder.addFileToChat",
+        "title": "Ollama Coder: Add File/Selection to Chat"
       }
     ],
     "viewsContainers": {
@@ -133,7 +142,8 @@
         { "command": "ollamaCoder.fixSelection" },
         { "command": "ollamaCoder.addDocstrings" },
         { "command": "ollamaCoder.generateTests" },
-        { "command": "ollamaCoder.askAboutSelection" }
+        { "command": "ollamaCoder.askAboutSelection" },
+        { "command": "ollamaCoder.addFileToChat" }
       ]
     },
     "submenus": [

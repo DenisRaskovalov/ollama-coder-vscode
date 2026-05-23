@@ -64,6 +64,23 @@ export function activate(ctx: vscode.ExtensionContext) {
   reg("ollamaCoder.selectCompletionModel", () =>
     pickModel("completionModel")
   );
+
+  reg("ollamaCoder.addFileToChat", async () => {
+    const ed = vscode.window.activeTextEditor;
+    if (!ed) {
+      vscode.window.showWarningMessage("Ollama Coder: no active editor.");
+      return;
+    }
+    const rel = vscode.workspace.asRelativePath(ed.document.uri);
+    const mention = ed.selection.isEmpty ? `@${rel}` : `@selection`;
+    await vscode.commands.executeCommand(
+      "workbench.view.extension.ollamaCoder"
+    );
+    chatProvider.reveal();
+    await chatProvider.pushUserMessage(
+      `Take a look at ${mention} and tell me what you see.`
+    );
+  });
 }
 
 async function pickModel(key: "chatModel" | "completionModel") {

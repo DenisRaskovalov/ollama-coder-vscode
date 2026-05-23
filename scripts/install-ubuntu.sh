@@ -11,6 +11,7 @@
 #   CODE_BIN=codium ./scripts/install-ubuntu.sh  # install into VSCodium
 #   SKIP_OLLAMA=1 ./scripts/install-ubuntu.sh    # don't touch Ollama
 #   SKIP_PULL=1   ./scripts/install-ubuntu.sh    # don't pull models
+#   OLLAMA_HOST=http://127.0.0.1:11434 ...       # override server URL
 #
 set -euo pipefail
 
@@ -24,6 +25,52 @@ die()  { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
 CODE_BIN="${CODE_BIN:-code}"
 CHAT_MODEL="${CHAT_MODEL:-llama3.1:8b-instruct}"
 COMPLETION_MODEL="${COMPLETION_MODEL:-qwen2.5-coder:1.5b-base}"
+OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+
+is_ollama_up() {
+  curl -fsS --max-time 2 "$OLLAMA_HOST/api/tags" >/dev/null 2>&1
+}
+
+wait_for_ollama() {
+  local tries="${1:-30}"
+  for ((i=1; i<=tries; i++)); do
+    if is_ollama_up; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
+start_ollama_background() {
+  # Spawn a detached `ollama serve`, redirect logs, and don't tie it to this shell.
+  local log_file="${TMPDIR:-/tmp}/ollama-serve.log"
+  log "Starting 'ollama serve' in background (logs: $log_file)"
+  nohup ollama serve >"$log_file" 2>&1 </dev/null &
+  disown || true
+}
+
+ensure_ollama_running() {
+  if is_ollama_up; then
+    log "Ollama server already responding at $OLLAMA_HOST"
+    return 0
+  fi
+
+  # Prefer systemd when available (survives reboots, runs as the ollama user).
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^ollama\.service'; then
+    log "Enabling & starting ollama via systemd"
+    sudo systemctl enable --now ollama || warn "systemctl enable --now ollama failed; will fall back to 'ollama serve'"
+    if wait_for_ollama 30; then return 0; fi
+    warn "Ollama systemd service didn't become ready in time; trying 'ollama serve' directly"
+  fi
+
+  # Fallback: launch `ollama serve` ourselves (WSL, containers, non-systemd distros).
+  start_ollama_background
+  if wait_for_ollama 30; then
+    log "Ollama server is up at $OLLAMA_HOST"
+    return 0
+  fi
+
+  die "Ollama server did not become reachable at $OLLAMA_HOST. Check logs in ${TMPDIR:-/tmp}/ollama-serve.log"
+}
 
 # -----------------------------------------------------------------------------
 # 1. System prerequisites
@@ -60,15 +107,19 @@ if [ "${SKIP_OLLAMA:-0}" != "1" ]; then
     log "Ollama already installed: $(ollama --version || true)"
   fi
 
-  # Start the service if systemd is available
-  if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl enable --now ollama || warn "Could not enable ollama via systemd"
-  fi
+  # Make sure the server is actually listening before we try to pull models.
+  ensure_ollama_running
 
   if [ "${SKIP_PULL:-0}" != "1" ]; then
     log "Pulling default models (this can take a while)"
     ollama pull "$CHAT_MODEL"       || warn "Failed to pull $CHAT_MODEL"
     ollama pull "$COMPLETION_MODEL" || warn "Failed to pull $COMPLETION_MODEL"
+  fi
+else
+  # Even when we skip installing/pulling, the extension still needs a running server.
+  if ! is_ollama_up && command -v ollama >/dev/null 2>&1; then
+    warn "SKIP_OLLAMA=1 but no server reachable at $OLLAMA_HOST; starting one for you"
+    ensure_ollama_running
   fi
 fi
 

@@ -1,11 +1,16 @@
 .vscode/**
 .vscode-test/**
 src/**
+test/**
 .gitignore
+.vscodeignore
 tsconfig.json
 **/*.map
 **/*.ts
+!media/**
 node_modules/**
 scripts/**
 .git/**
 .github/**
+PUBLISHING.md
+package-lock.json

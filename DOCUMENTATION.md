@@ -193,6 +193,11 @@ ollama-coder-vscode/
 ├── DOCUMENTATION.md             ← this file (architecture / reference)
 ├── LICENSE                      Apache-2.0
 ├── media/                       sidebar icon
+├── test/                        node:test suites:
+│    ├─ typecheck.test.js         shells out to `tsc --noEmit`; catches
+│    │                            undefined symbols / type errors
+│    ├─ chatView.test.js          unit tests for compiled chat helpers
+│    └─ _vscode_stub.js           minimal 'vscode' stub for Node-side require()
 └── src/
     ├── extension.ts             activate(): registers commands, status bar,
     │                              completion provider, chat webview
@@ -250,7 +255,36 @@ All under the `ollamaCoder.*` namespace.
 
 ---
 
-## 11. `scripts/install-ubuntu.sh`
+## 11. Testing
+
+The repo ships a tiny test setup using **Node's built-in `node:test`** runner
+(no extra dependencies):
+
+```sh
+npm test                # runs: npm run compile && node --test test/*.test.js
+npm run typecheck       # runs: tsc -p ./ --noEmit (fast feedback)
+```
+
+Two test files:
+
+- `test/typecheck.test.js` — shells out to the local `tsc` and asserts zero
+  errors. This catches the exact class of bug that produced the missing
+  `compactJson` reference at runtime (an identifier used but never defined or
+  imported).
+- `test/chatView.test.js` — unit tests for `compactJson` (plain objects, long
+  strings, circular references, overall-length cap, non-serializable values
+  like `BigInt`).
+
+`test/_vscode_stub.js` is a minimal stub of the `vscode` module so compiled
+sources can be `require()`'d in plain Node — the real `vscode` module only
+exists inside a running VS Code process.
+
+`scripts/install-ubuntu.sh` runs `npm test` after compiling, so a broken
+commit fails the install before producing a `.vsix`.
+
+---
+
+## 12. `scripts/install-ubuntu.sh`
 
 A single end-to-end installer for Ubuntu (tested on 24.04 / 26.04) and similar
 Debian-family systems. It is idempotent and safe to re-run.
@@ -328,7 +362,7 @@ EXTRA_MODELS="qwen2.5:7b mistral:7b" ./scripts/install-ubuntu.sh
 
 ---
 
-## 12. Error handling notes
+## 13. Error handling notes
 
 - **`HTTP 404` from Ollama** almost always means the configured model is not
   installed. `src/ollama.ts` parses Ollama's JSON error body and rephrases this
@@ -345,7 +379,7 @@ EXTRA_MODELS="qwen2.5:7b mistral:7b" ./scripts/install-ubuntu.sh
 
 ---
 
-## 13. Privacy
+## 14. Privacy
 
 Everything runs on `localhost`:
 

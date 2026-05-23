@@ -7,8 +7,22 @@ Nothing leaves your machine.
 
 - **Inline ghost-text completion** as you type, using a FIM-capable model
   (defaults to `qwen2.5-coder:1.5b-base`). Debounced and cancellable.
-- **Chat sidebar** (Activity Bar → robot icon) with streaming responses and a
-  one-click "include current file/selection" toggle for context.
+- **Chat sidebar** (Activity Bar → robot icon) with streaming responses, a
+  one-click "include current file/selection" toggle, and `@mentions`:
+  - `@src/foo.ts` — attach a workspace file's contents to your question.
+  - `@selection` — attach the current editor selection (or whole active file).
+- **Apply code blocks** — hover any code block in chat for one-click
+  *Insert at cursor*, *Replace selection*, *Save…* (with diff preview if the
+  target file exists), and *Copy*. If the assistant emits a fence like
+  ` ```ts src/foo.ts `, *Save…* pre-fills that path.
+- **Agent mode** (checkbox in the chat input) lets the model call workspace
+  tools to answer multi-step questions and apply edits:
+  - `read_file`, `list_files`, `search_text` — read-only context gathering.
+  - `get_open_editors` — see what's open and what's selected.
+  - `write_file` — create / overwrite files (always shows a confirm dialog;
+    "Show diff first" opens a side-by-side preview before applying).
+  Uses Ollama's native tool calling — works well with `llama3.1:8b`,
+  `qwen2.5:7b`, `qwen2.5-coder:7b`, and other tool-capable models.
 - **Code actions on selection** (right-click → *Ollama Coder*):
   - Explain Selection
   - Refactor Selection (replaces selection)
@@ -40,6 +54,7 @@ Nothing leaves your machine.
 | `ollamaCoder.maxCompletionTokens` | `128` | Max tokens per completion |
 | `ollamaCoder.temperature` | `0.2` | Sampling temperature |
 | `ollamaCoder.contextWindowChars` | `4000` | Max chars of file context sent to the model |
+| `ollamaCoder.agentMaxSteps` | `8` | Max tool-calling steps per agent turn |
 
 ## Quick install on Ubuntu (24.04 / 26.04)
 

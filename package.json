@@ -28,7 +28,7 @@
         },
         "ollamaCoder.chatModel": {
           "type": "string",
-          "default": "llama3.1:8b-instruct",
+          "default": "llama3.1:8b",
           "description": "Ollama model used for chat / code actions."
         },
         "ollamaCoder.completionModel": {

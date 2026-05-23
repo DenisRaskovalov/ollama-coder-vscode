@@ -33,7 +33,7 @@ Nothing leaves your machine.
 | Setting | Default | Description |
 | --- | --- | --- |
 | `ollamaCoder.endpoint` | `http://localhost:11434` | Ollama server URL |
-| `ollamaCoder.chatModel` | `llama3.1:8b-instruct` | Model for chat & code actions |
+| `ollamaCoder.chatModel` | `llama3.1:8b` | Model for chat & code actions |
 | `ollamaCoder.completionModel` | `qwen2.5-coder:1.5b-base` | Model for inline completion (FIM-capable recommended) |
 | `ollamaCoder.enableInlineCompletion` | `true` | Toggle ghost-text completion |
 | `ollamaCoder.completionDebounceMs` | `250` | Delay before a completion request |
@@ -53,7 +53,7 @@ The script will:
 
 1. Check for Node.js ≥ 18 (and install via apt if missing).
 2. Install Ollama (via the official installer) and `systemctl enable --now ollama`.
-3. Pull the two default models (`llama3.1:8b-instruct`, `qwen2.5-coder:1.5b-base`).
+3. Pull the two default models (`llama3.1:8b`, `qwen2.5-coder:1.5b-base`).
 4. `npm install`, compile TypeScript, package a `.vsix`, and install it into the `code` CLI.
 
 Useful environment variables:
@@ -101,7 +101,7 @@ scripts/
 | --- | --- | --- |
 | Inline completion (fast, FIM) | `qwen2.5-coder:1.5b-base` | `ollama pull qwen2.5-coder:1.5b-base` |
 | Inline completion (better, FIM) | `qwen2.5-coder:7b-base` | `ollama pull qwen2.5-coder:7b-base` |
-| Chat / code actions (small) | `llama3.1:8b-instruct` | `ollama pull llama3.1:8b-instruct` |
+| Chat / code actions (small) | `llama3.1:8b` | `ollama pull llama3.1:8b` |
 | Chat / code actions (better) | `qwen2.5-coder:7b-instruct` | `ollama pull qwen2.5-coder:7b-instruct` |
 
 > The inline completion provider sends both a `prompt` (prefix) and `suffix` to

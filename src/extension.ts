@@ -80,7 +80,7 @@ async function pickModel(key: "chatModel" | "completionModel") {
   }
   if (models.length === 0) {
     vscode.window.showWarningMessage(
-      "No Ollama models found. Pull one with: `ollama pull llama3.1:8b-instruct`"
+      "No Ollama models found. Pull one with: `ollama pull llama3.1:8b`"
     );
     return;
   }

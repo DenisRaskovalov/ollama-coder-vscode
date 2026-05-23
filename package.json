@@ -1,18 +1,43 @@
 {
   "name": "ollama-coder",
   "displayName": "Ollama Coder",
-  "description": "Code with a local Ollama LLM: inline completion, chat sidebar, explain/refactor/fix/tests/docstrings on selection.",
+  "description": "Code with a local Ollama LLM: inline completion, chat sidebar with @mentions and apply buttons, agent mode (read/write workspace via tools), explain/refactor/fix/tests/docstrings on selection.",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "evilmucedin",
   "license": "Apache-2.0",
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages",
     "Machine Learning",
+    "Snippets",
     "Other"
   ],
+  "keywords": [
+    "ollama",
+    "llm",
+    "ai",
+    "local",
+    "copilot",
+    "cursor",
+    "completion",
+    "chat",
+    "agent",
+    "qwen",
+    "llama",
+    "offline"
+  ],
+  "galleryBanner": {
+    "color": "#1f6feb",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/evilmucedin/ollama-coder-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/evilmucedin/ollama-coder-vscode/issues"
+  },
+  "qna": "marketplace",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -186,6 +211,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/local/ollama-coder-vscode"
+    "url": "https://github.com/evilmucedin/ollama-coder-vscode.git"
   }
 }

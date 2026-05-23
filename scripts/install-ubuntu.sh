@@ -147,6 +147,9 @@ npm install --no-audit --no-fund
 log "Compiling TypeScript"
 npm run compile
 
+log "Running tests"
+npm test
+
 log "Packaging .vsix"
 npx --yes @vscode/vsce package -o ollama-coder.vsix
 

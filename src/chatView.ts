@@ -18,6 +18,30 @@ const SYSTEM_AGENT =
 
 const MAX_AGENT_STEPS = 8;
 
+/**
+ * Render tool arguments as a short single-line JSON for the chat UI.
+ * Long string values are truncated so the tool-call line stays readable.
+ */
+export function compactJson(value: unknown, maxLen = 200): string {
+  const seen = new WeakSet<object>();
+  const replacer = (_k: string, v: any) => {
+    if (typeof v === "string" && v.length > 80) return v.slice(0, 77) + "…";
+    if (v && typeof v === "object") {
+      if (seen.has(v)) return "[circular]";
+      seen.add(v);
+    }
+    return v;
+  };
+  let out: string;
+  try {
+    out = JSON.stringify(value, replacer);
+  } catch {
+    out = String(value);
+  }
+  if (out === undefined) out = String(value);
+  return out.length > maxLen ? out.slice(0, maxLen - 1) + "…" : out;
+}
+
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "ollamaCoder.chatView";
 

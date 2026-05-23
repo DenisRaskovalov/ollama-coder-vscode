@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { chatFull, ChatMessage } from "./ollama";
+import { chatFull, ChatMessage, listModels } from "./ollama";
 import { TOOL_SCHEMAS, executeTool, ToolCall } from "./tools";
 import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 
@@ -34,11 +34,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     view.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
+        case "ready":
+          await this.sendModelList();
+          break;
+        case "refreshModels":
+          await this.sendModelList();
+          break;
+        case "setModel":
+          await vscode.workspace
+            .getConfiguration("ollamaCoder")
+            .update(
+              "chatModel",
+              String(msg.model ?? ""),
+              vscode.ConfigurationTarget.Global
+            );
+          break;
         case "send":
           await this.handleSend(
             String(msg.text ?? ""),
             !!msg.includeFile,
-            !!msg.agent
+            !!msg.agent,
+            msg.model ? String(msg.model) : undefined
           );
           break;
         case "stop":
@@ -59,6 +75,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
       }
     });
+
+    // If the user changes the model from the status bar, keep the dropdown in sync.
+    const cfgSub = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("ollamaCoder.chatModel")) {
+        const m = vscode.workspace
+          .getConfiguration("ollamaCoder")
+          .get<string>("chatModel", "");
+        this.post({ type: "currentModel", model: m });
+      }
+    });
+    this.ctx.subscriptions.push(cfgSub);
+  }
+
+  private async sendModelList() {
+    const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+    const endpoint = cfg.get<string>("endpoint", "http://localhost:11434");
+    const current = cfg.get<string>("chatModel", "");
+    let models: string[] = [];
+    let error: string | undefined;
+    try {
+      models = await listModels(endpoint);
+    } catch (e: any) {
+      error = e?.message ?? String(e);
+    }
+    this.post({ type: "models", models, current, error });
   }
 
   reveal() {
@@ -135,13 +176,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return { text, attachments };
   }
 
-  private async handleSend(text: string, includeFile: boolean, agent: boolean) {
+  private async handleSend(
+    text: string,
+    includeFile: boolean,
+    agent: boolean,
+    modelOverride?: string
+  ) {
     if (!text.trim()) return;
     this.inflight?.abort();
 
     const cfg = vscode.workspace.getConfiguration("ollamaCoder");
     const endpoint = cfg.get<string>("endpoint", "http://localhost:11434");
-    const model = cfg.get<string>("chatModel", "llama3.1:8b");
+    const model =
+      modelOverride && modelOverride.trim()
+        ? modelOverride
+        : cfg.get<string>("chatModel", "llama3.1:8b");
     const temperature = cfg.get<number>("temperature", 0.3);
     const ctxChars = cfg.get<number>("contextWindowChars", 4000);
 
@@ -339,6 +388,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div id="bar">
     <textarea id="input" placeholder="Ask anything. Use @path/to/file or @selection to attach context. Ctrl/Cmd+Enter to send."></textarea>
     <div id="row">
+      <label style="display:flex;align-items:center;gap:4px">
+        Model:
+        <select id="model" title="Model for the next query"><option value="">(loading…)</option></select>
+        <button id="refreshModels" class="secondary" title="Refresh model list">↻</button>
+      </label>
       <label><input type="checkbox" id="ctx" checked /> include current file/selection</label>
       <label><input type="checkbox" id="agent" /> agent mode (can read/write workspace)</label>
       <span style="flex:1"></span>
@@ -352,8 +406,38 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   const vscode = acquireVsCodeApi();
   const log = document.getElementById('log');
   const input = document.getElementById('input');
+  const modelSel = document.getElementById('model');
   let current = null;       // body element for current assistant message
   let currentRaw = "";
+
+  function populateModels(list, current, error){
+    modelSel.innerHTML = '';
+    if (error) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = '(error: ' + error.slice(0,40) + ')';
+      modelSel.appendChild(o);
+      return;
+    }
+    if (!list || list.length === 0) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = '(no models — run: ollama pull …)';
+      modelSel.appendChild(o);
+      return;
+    }
+    // Make sure the currently-configured model is selectable even if not yet listed.
+    if (current && !list.includes(current)) list = [current, ...list];
+    for (const m of list) {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m;
+      if (m === current) o.selected = true;
+      modelSel.appendChild(o);
+    }
+  }
+
+  modelSel.addEventListener('change', ()=>{
+    vscode.postMessage({ type:'setModel', model: modelSel.value });
+  });
+  document.getElementById('refreshModels').onclick = ()=>vscode.postMessage({type:'refreshModels'});
 
   function escapeHtml(s){return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
   function escapeAttr(s){return s.replace(/"/g,'&quot;').replace(/</g,'&lt;');}
@@ -416,6 +500,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       text,
       includeFile: document.getElementById('ctx').checked,
       agent: document.getElementById('agent').checked,
+      model: modelSel.value || undefined,
     });
   }
   document.getElementById('send').onclick = send;
@@ -459,7 +544,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
     else if (m.type === 'cleared'){ log.innerHTML=''; window.__codeBlocks={}; }
+    else if (m.type === 'models'){ populateModels(m.models, m.current, m.error); }
+    else if (m.type === 'currentModel'){
+      for (const o of modelSel.options) o.selected = (o.value === m.model);
+    }
   });
+
+  // Ask the extension to send us the model list now that we're loaded.
+  vscode.postMessage({ type:'ready' });
 </script>
 </body></html>`;
   }

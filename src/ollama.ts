@@ -48,7 +48,32 @@ function request(
         if (res.statusCode && res.statusCode >= 400) {
           let err = "";
           res.on("data", (d) => (err += d));
-          res.on("end", () => reject(new Error(`Ollama HTTP ${res.statusCode}: ${err}`)));
+          res.on("end", () => {
+            const status = res.statusCode!;
+            let msg = err.trim();
+            // Ollama returns JSON like {"error":"model 'foo' not found, try pulling it first"}
+            try {
+              const j = JSON.parse(msg);
+              if (j && typeof j.error === "string") msg = j.error;
+            } catch {
+              /* keep raw body */
+            }
+            if (status === 404 && /model/i.test(msg)) {
+              // Try to extract the model name from the request body for a clearer hint.
+              let modelName = "";
+              try {
+                modelName = (body as any)?.model ?? "";
+              } catch {
+                /* ignore */
+              }
+              const hint = modelName
+                ? `Model "${modelName}" is not installed. Run:  ollama pull ${modelName}`
+                : `Model not installed. Pull it with 'ollama pull <model>'.`;
+              reject(new Error(`${hint}  (Ollama said: ${msg})`));
+            } else {
+              reject(new Error(`Ollama HTTP ${status}: ${msg}`));
+            }
+          });
           return;
         }
         let buf = "";

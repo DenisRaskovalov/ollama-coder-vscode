@@ -12,6 +12,7 @@
 #   SKIP_OLLAMA=1 ./scripts/install-ubuntu.sh    # don't touch Ollama
 #   SKIP_PULL=1   ./scripts/install-ubuntu.sh    # don't pull models
 #   OLLAMA_HOST=http://127.0.0.1:11434 ...       # override server URL
+#   EXTRA_MODELS="qwen2.5:7b mistral:7b" ...       # additionally pull these
 #
 set -euo pipefail
 
@@ -23,9 +24,10 @@ warn() { printf "\033[1;33m!! \033[0m %s\n" "$*" >&2; }
 die()  { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
 
 CODE_BIN="${CODE_BIN:-code}"
-CHAT_MODEL="${CHAT_MODEL:-llama3.1:8b-instruct}"
+CHAT_MODEL="${CHAT_MODEL:-llama3.1:8b}"
 COMPLETION_MODEL="${COMPLETION_MODEL:-qwen2.5-coder:1.5b-base}"
 OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+EXTRA_MODELS="${EXTRA_MODELS:-}"
 
 is_ollama_up() {
   curl -fsS --max-time 2 "$OLLAMA_HOST/api/tags" >/dev/null 2>&1
@@ -111,9 +113,22 @@ if [ "${SKIP_OLLAMA:-0}" != "1" ]; then
   ensure_ollama_running
 
   if [ "${SKIP_PULL:-0}" != "1" ]; then
-    log "Pulling default models (this can take a while)"
-    ollama pull "$CHAT_MODEL"       || warn "Failed to pull $CHAT_MODEL"
-    ollama pull "$COMPLETION_MODEL" || warn "Failed to pull $COMPLETION_MODEL"
+    # Pull every model the extension might use. Failing here is fatal — without
+    # the model, /api/chat and /api/generate return HTTP 404 inside VS Code.
+    pull_model() {
+      local name="$1"
+      log "Pulling $name"
+      if ! ollama pull "$name"; then
+        die "Failed to pull $name. Check the tag exists at https://ollama.com/library"
+      fi
+      # Verify it actually shows up in /api/tags (catches partial pulls).
+      if ! curl -fsS "$OLLAMA_HOST/api/tags" | grep -Fq "\"$name\""; then
+        die "$name pulled but not visible in $OLLAMA_HOST/api/tags"
+      fi
+    }
+    pull_model "$CHAT_MODEL"
+    pull_model "$COMPLETION_MODEL"
+    for m in $EXTRA_MODELS; do pull_model "$m"; done
   fi
 else
   # Even when we skip installing/pulling, the extension still needs a running server.

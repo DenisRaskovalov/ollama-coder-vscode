@@ -93,7 +93,7 @@ export async function runAction(actionId: keyof typeof ACTIONS) {
 
   const cfg = vscode.workspace.getConfiguration("ollamaCoder");
   const endpoint = cfg.get<string>("endpoint", "http://localhost:11434");
-  const model = cfg.get<string>("chatModel", "llama3.1:8b-instruct");
+  const model = cfg.get<string>("chatModel", "llama3.1:8b");
   const temperature = cfg.get<number>("temperature", 0.2);
 
   const lang = editor.document.languageId;

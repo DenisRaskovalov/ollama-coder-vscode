@@ -1,0 +1,130 @@
+*ollama-coder.txt*  Local LLM coding assistant powered by Ollama.
+
+==============================================================================
+CONTENTS                                                  *ollama-coder-contents*
+
+  1. Intro ............................................ |ollama-coder-intro|
+  2. Requirements ..................................... |ollama-coder-reqs|
+  3. Commands ......................................... |ollama-coder-commands|
+  4. Default keymaps .................................. |ollama-coder-maps|
+  5. Settings ......................................... |ollama-coder-settings|
+  6. Agent mode ....................................... |ollama-coder-agent|
+  7. History .......................................... |ollama-coder-history|
+
+==============================================================================
+1. Intro                                                   *ollama-coder-intro*
+
+Sister plugin to the VS Code extension `Ollama Coder`. Talks to a local
+Ollama server over HTTP; nothing leaves your machine.
+
+==============================================================================
+2. Requirements                                             *ollama-coder-reqs*
+
+  - Vim 8.0+ (with +job) or Neovim 0.5+
+  - `curl` on $PATH
+  - Ollama running locally:  https://ollama.com
+  - At least one chat model:  `ollama pull llama3.1:8b`
+
+==============================================================================
+3. Commands                                              *ollama-coder-commands*
+
+                                                                  *:OllamaChat*
+:OllamaChat [{prompt}]   Open the chat split. With an argument, sends it
+                         as the first turn.
+
+                                                                  *:OllamaSend*
+:OllamaSend {prompt}     Send a prompt to the chat. Used from inside the
+                         chat buffer or from any window.
+
+                                                                 *:OllamaWrite*
+:OllamaWrite {prompt}    Run an *agent turn*. The model can call
+                         `read_file`, `write_file`, `list_files`. You will
+                         be asked y/N before any file is created or
+                         overwritten.  See |ollama-coder-agent|.
+
+                                                                  *:OllamaAsk*
+:[range]OllamaAsk [q]    Ask a question about the current selection.
+
+                                                              *:OllamaExplain*
+:[range]OllamaExplain    Explain the selected lines in a scratch buffer.
+
+                                                             *:OllamaRefactor*
+:[range]OllamaRefactor   Refactor the selection in-place.
+
+                                                                  *:OllamaFix*
+:[range]OllamaFix        Fix bugs in the selection in-place.
+
+                                                                 *:OllamaDocs*
+:[range]OllamaDocs       Add docstrings/comments to the selection in-place.
+
+                                                                *:OllamaTests*
+:[range]OllamaTests      Generate unit tests for the selection in a new
+                         scratch buffer.
+
+                                                                *:OllamaModel*
+:OllamaModel             Pick the chat model from the list of locally
+                         installed models (queried from /api/tags).
+
+                                                                 *:OllamaStop*
+:OllamaStop              Cancel any in-flight Ollama request.
+
+                                                              *:OllamaHistory*
+:OllamaHistory           Pick a previously sent prompt, edit it, and send.
+
+==============================================================================
+4. Default keymaps                                          *ollama-coder-maps*
+
+In normal mode:
+    <leader>oc   :OllamaChat
+    <leader>om   :OllamaModel
+    <leader>os   :OllamaStop
+    <leader>oh   :OllamaHistory
+
+In visual mode (operate on selection):
+    <leader>oe   :OllamaExplain
+    <leader>or   :OllamaRefactor
+    <leader>of   :OllamaFix
+    <leader>od   :OllamaDocs
+    <leader>ot   :OllamaTests
+    <leader>oa   :OllamaAsk
+
+Set `let g:ollama_coder_default_maps = 0` in your vimrc to disable.
+
+==============================================================================
+5. Settings                                              *ollama-coder-settings*
+
+All have sensible defaults; override in vimrc / init.lua before the plugin
+loads.
+
+    g:ollama_coder_endpoint           default 'http://localhost:11434'
+    g:ollama_coder_chat_model         default 'llama3.1:8b'
+    g:ollama_coder_completion_model   default 'qwen2.5-coder:1.5b-base'
+    g:ollama_coder_temperature        default 0.2
+    g:ollama_coder_context_chars      default 4000
+    g:ollama_coder_agent_max_steps    default 8
+    g:ollama_coder_default_maps       default 1
+
+==============================================================================
+6. Agent mode                                              *ollama-coder-agent*
+
+`:OllamaWrite {prompt}` lets the model call workspace tools:
+  - read_file(path)
+  - list_files(path)
+  - write_file(path, content)  - asks y/N before applying
+
+All paths are sandboxed inside the project root (first .git ancestor of
+cwd, falling back to cwd). The loop runs up to
+`g:ollama_coder_agent_max_steps` rounds.
+
+Example:
+    :OllamaWrite write a new file with C++ Hello World
+
+==============================================================================
+7. History                                                *ollama-coder-history*
+
+Every prompt sent via `:OllamaSend` or `:OllamaWrite` is persisted to
+~/.cache/ollama-coder/history (100-entry ring, dedup on resend).
+`:OllamaHistory` shows the most recent 20, lets you pick one, edit it,
+and send.
+
+ vim:tw=78:et:ft=help:norl:

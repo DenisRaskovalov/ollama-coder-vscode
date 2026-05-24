@@ -4,6 +4,7 @@ import { TOOL_SCHEMAS, executeTool, ToolCall } from "./tools";
 import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 import { searchWeb, SearchResult } from "./web";
 import { routeWithModel, RoutePlan } from "./router";
+import { runAgentLoop as runAgentLoopPure } from "./agentLoop";
 
 const SYSTEM_BASIC =
   "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -681,65 +682,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const maxSteps = vscode.workspace
       .getConfiguration("ollamaCoder")
       .get<number>("agentMaxSteps", MAX_AGENT_STEPS);
-    for (let step = 0; step < maxSteps; step++) {
-      this.post({ type: "assistantStart" });
-      const r = await chatFull({
+
+    const result = await runAgentLoopPure(
+      {
         endpoint,
         model,
         messages: this.history,
+        tools: TOOL_SCHEMAS,
         temperature,
         numPredict: 2048,
-        tools: TOOL_SCHEMAS,
+        maxSteps,
         signal,
-      });
-
-      // If the model produced any prose, show it.
-      if (r.content) this.post({ type: "assistantToken", text: r.content });
-
-      // Record the assistant turn (with any tool_calls).
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: r.content,
-      };
-      if (r.tool_calls.length) {
-        assistantMsg.tool_calls = r.tool_calls.map((tc) => ({
-          function: { name: tc.name, arguments: tc.arguments },
-        }));
+      },
+      {
+        chat: chatFull,
+        executeTool: (tc) => executeTool(tc as ToolCall),
+        onAssistantStart:  () => this.post({ type: "assistantStart" }),
+        onAssistantToken:  (t) => this.post({ type: "assistantToken", text: t }),
+        onAssistantEnd:    () => this.post({ type: "assistantEnd" }),
+        onToolCall:        (name, args) =>
+          this.post({ type: "toolCall", name, args: compactJson(args) }),
+        onToolResult:      (name, preview) =>
+          this.post({ type: "toolResult", name, preview }),
+        onStoppedAtMaxSteps: (n) =>
+          this.post({
+            type: "assistantError",
+            text: `(agent stopped after ${n} steps)`,
+          }),
       }
-      this.history.push(assistantMsg);
-
-      if (!r.tool_calls.length) {
-        // Done — no more tool calls.
-        this.post({ type: "assistantEnd" });
-        return;
-      }
-
-      // Execute each tool call and feed results back.
-      for (const tc of r.tool_calls) {
-        const argsStr = compactJson(tc.arguments);
-        this.post({
-          type: "toolCall",
-          name: tc.name,
-          args: argsStr,
-        });
-        const result = await executeTool(tc as ToolCall);
-        this.post({
-          type: "toolResult",
-          name: tc.name,
-          preview: result.slice(0, 400),
-        });
-        this.history.push({
-          role: "tool",
-          tool_name: tc.name,
-          content: result,
-        });
-      }
-      this.post({ type: "assistantEnd" });
-    }
-    this.post({
-      type: "assistantError",
-      text: `(agent stopped after ${maxSteps} steps)`,
-    });
+    );
+    // Keep the persisted history in sync with the loop's append-only copy.
+    this.history = result.messages;
   }
 
   private html(): string {

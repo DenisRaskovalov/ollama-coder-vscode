@@ -5,6 +5,50 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] — unreleased
+
+Agent acceptance harness. End-to-end tests that follow the user's
+"empty directory → sequence of commands → verify the output compiles
+and runs" pattern.
+
+### Added
+- `src/agentLoop.ts` — the agent loop, extracted from `chatView.ts` into
+  a pure dependency-injected function with no `vscode` imports. The
+  loop takes `chat`, `executeTool`, and optional `on*` callbacks, so it
+  can be driven by the production VS Code webview, by tests, or by a
+  future CLI front-end.
+- `test/_scriptedOllama.js` — a deterministic `chat` mock that serves
+  a scripted sequence of `{ content, tool_calls }` entries.
+- `test/_fsToolExecutor.js` — a workspace-agnostic tool executor backed
+  by plain `fs`, reusing the production `applySearchReplace` and
+  `extractSymbols` / `renderRepoMap` helpers. Auto-confirms writes
+  (tests don't have a modal dialog).
+- `test/agentE2E.test.js` with **five end-to-end scenarios**:
+  1. Empty dir → “write a Python script that prints 1..10” →
+     `python3 count.py` actually prints 1..10.
+  2. Empty dir → multi-file C++ Hello World + Makefile →
+     `make && ./hello` exits 0 and prints `Hello, World!`.
+  3. Pre-existing buggy Python file → agent does `read_file` then a
+     SEARCH/REPLACE patch via `edit_file` → `python3` shows the fixed
+     output (`1..10`, not `1..9`).
+  4. Pre-existing repo → agent uses `repo_map` first to find the
+     calculator module, then `edit_file` adds a function. Test asserts
+     the tool sequence is `[repo_map, edit_file]` — the exact ordering
+     `SYSTEM_AGENT` coaches.
+  5. Failure recovery: agent’s first `edit_file` has an ambiguous
+     `search` (matches 3 times), the executor returns the
+     “more than once” ERROR, and the agent retries with a unique
+     snippet. Final file content is verified byte-for-byte.
+- Scenarios that need a toolchain (`python3`, `g++`, `make`) skip
+  themselves cleanly when the binary isn’t on `PATH`. No false reds
+  on bare CI images.
+
+### Changed
+- `chatView.ts` now uses `runAgentLoop` from `src/agentLoop.ts` instead
+  of the inlined body. Production behaviour is byte-identical; the
+  refactor is purely to make the loop test-drivable. Verified by the
+  other 240 tests staying green.
+
 ## [1.4.3] — unreleased
 
 Agent capability bump, inspired by ideas from open-source coding agents.

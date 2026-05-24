@@ -387,7 +387,21 @@ Nothing happens "elsewhere".
 
 ## 8. Status
 
-Last updated for **v1.4.2**.
+Last updated for **v1.4.3**.
+
+### Open-source ideas adopted
+
+| Idea | Origin | Where it lives in this repo |
+| --- | --- | --- |
+| SEARCH/REPLACE diff edits | [Aider](https://aider.chat) | `src/editFile.ts`, `edit_file` tool |
+| Repo map for navigation context | [Aider](https://aider.chat) | `src/repoMap.ts`, `repo_map` tool |
+| LLM-driven router for intent classification | This paper §4.3 + general agent literature | `src/router.ts` |
+| Confirmed shell execution | Cline / OpenHands | `run_command` tool in `src/tools.ts` |
+| `format: json` structured-output prompting | Ollama docs + LangChain pattern | `chatFull` `format` parameter |
+
+The principle from every one of these: **the plugin owns the safety
+rails (sandbox, confirms, schema validation); the model owns the
+language understanding.**
 
 | Migration step (§4.5) | State |
 | --- | --- |

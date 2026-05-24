@@ -5,6 +5,15 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] — unreleased
+
+### Added
+- `ARCHITECTURE.md` — design paper covering the four phases of an
+  operation (Input → Router → Executor → Output), the seven invariants
+  the plugin upholds, the proposed migration from regex classifiers to
+  an LLM-driven router, and an end-to-end data-flow trace of one
+  realistic prompt.
+
 ## [1.4.0] — unreleased
 
 First version with the full feature set described below. Bumped from the

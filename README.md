@@ -7,7 +7,7 @@ This repository ships **two sister plugins** that share the same ideas:
 
 | Editor | Source | Installers | Docs |
 | --- | --- | --- | --- |
-| **VS Code** | `src/` | `scripts/install-ubuntu.sh`, `scripts/install-macos.sh`, `scripts/install-windows.ps1` | this README + [`DOCUMENTATION.md`](./DOCUMENTATION.md) |
+| **VS Code** | `src/` | `scripts/install-ubuntu.sh`, `scripts/install-macos.sh`, `scripts/install-windows.ps1` | this README, [`DOCUMENTATION.md`](./DOCUMENTATION.md), [`ARCHITECTURE.md`](./ARCHITECTURE.md) |
 | **Vim / Neovim** | `vim/` | `vim/scripts/install-ubuntu.sh`, `vim/scripts/install-macos.sh`, `vim/scripts/install-windows.ps1` | [`vim/README.md`](./vim/README.md) + `:help ollama-coder` |
 
 All six installers share the same environment-variable contract:

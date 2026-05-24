@@ -5,10 +5,16 @@ Nothing leaves your machine.
 
 This repository ships **two sister plugins** that share the same ideas:
 
-| Editor | Source | Installer | Docs |
+| Editor | Source | Installers | Docs |
 | --- | --- | --- | --- |
-| **VS Code** | `src/` | `scripts/install-ubuntu.sh` | this README + [`DOCUMENTATION.md`](./DOCUMENTATION.md) |
-| **Vim / Neovim** | `vim/` | `vim/scripts/install-ubuntu.sh` | [`vim/README.md`](./vim/README.md) + `:help ollama-coder` |
+| **VS Code** | `src/` | `scripts/install-ubuntu.sh`, `scripts/install-macos.sh`, `scripts/install-windows.ps1` | this README + [`DOCUMENTATION.md`](./DOCUMENTATION.md) |
+| **Vim / Neovim** | `vim/` | `vim/scripts/install-ubuntu.sh`, `vim/scripts/install-macos.sh`, `vim/scripts/install-windows.ps1` | [`vim/README.md`](./vim/README.md) + `:help ollama-coder` |
+
+All six installers share the same environment-variable contract:
+`CHAT_MODEL`, `COMPLETION_MODEL`, `EXTRA_MODELS`, `OLLAMA_HOST`,
+`SKIP_OLLAMA`, `SKIP_PULL`. They each ensure the Ollama server is
+running, pull the configured models (failures are fatal, never silent),
+and verify them in `/api/tags` before installing the plugin.
 
 The rest of this README is about the VS Code extension.
 

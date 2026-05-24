@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# Install Ollama Coder for Vim / Neovim on macOS.
+#
+# Same behavior as vim/scripts/install-ubuntu.sh, adapted for Homebrew and
+# the absence of systemd.
+#
+# Usage:
+#   ./vim/scripts/install-macos.sh                          # vim + nvim if present
+#   EDITOR=nvim ./vim/scripts/install-macos.sh              # neovim only
+#   EDITOR=vim  ./vim/scripts/install-macos.sh              # vim only
+#   SKIP_OLLAMA=1 ./vim/scripts/install-macos.sh            # don't touch Ollama
+#   SKIP_PULL=1   ./vim/scripts/install-macos.sh            # don't pull models
+#   EXTRA_MODELS="qwen2.5:7b mistral:7b" ./vim/scripts/install-macos.sh
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PLUGIN_SRC="$ROOT_DIR/vim"
+
+log()  { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
+warn() { printf "\033[1;33m!! \033[0m %s\n" "$*" >&2; }
+die()  { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
+
+CHAT_MODEL="${CHAT_MODEL:-llama3.1:8b}"
+COMPLETION_MODEL="${COMPLETION_MODEL:-qwen2.5-coder:1.5b-base}"
+OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
+EXTRA_MODELS="${EXTRA_MODELS:-}"
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  die "This script is for macOS. Use vim/scripts/install-ubuntu.sh on Linux."
+fi
+
+# -----------------------------------------------------------------------------
+# 1. Homebrew
+# -----------------------------------------------------------------------------
+if ! command -v brew >/dev/null 2>&1; then
+  log "Installing Homebrew"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  brew install curl
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Pick editor(s)
+# -----------------------------------------------------------------------------
+WANT_VIM=0
+WANT_NVIM=0
+case "${EDITOR:-}" in
+  vim)   WANT_VIM=1 ;;
+  nvim)  WANT_NVIM=1 ;;
+  ""|both)
+    command -v vim  >/dev/null 2>&1 && WANT_VIM=1
+    command -v nvim >/dev/null 2>&1 && WANT_NVIM=1
+    ;;
+  *) die "EDITOR must be one of: vim, nvim, both (got '$EDITOR')" ;;
+esac
+
+if [ "$WANT_VIM$WANT_NVIM" = "00" ]; then
+  warn "Neither vim nor nvim is installed."
+  read -r -p "Install neovim now (recommended on macOS)? [Y/n] " ans
+  if [[ ! "$ans" =~ ^[Nn] ]]; then
+    brew install neovim
+    WANT_NVIM=1
+  else
+    die "Aborting — install vim or neovim and re-run."
+  fi
+fi
+
+# The system 'vim' that ships with macOS is built without +job. Detect and
+# nudge the user to brew's modern build.
+if [ "$WANT_VIM" = 1 ] && ! vim --version | grep -q '+job'; then
+  warn "The vim on \$PATH lacks +job (probably the system /usr/bin/vim)."
+  warn "  brew install vim          # gets you a modern Vim with +job"
+  warn "Disabling the vim install target for this run; using neovim if available."
+  WANT_VIM=0
+  if command -v nvim >/dev/null 2>&1; then WANT_NVIM=1; fi
+fi
+
+# -----------------------------------------------------------------------------
+# 3. Ollama
+# -----------------------------------------------------------------------------
+is_ollama_up() { curl -fsS --max-time 2 "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; }
+wait_for_ollama() {
+  local tries="${1:-30}"
+  for ((i=1; i<=tries; i++)); do
+    if is_ollama_up; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+start_ollama_background() {
+  local log_file="${TMPDIR:-/tmp}/ollama-serve.log"
+  log "Starting 'ollama serve' in background (logs: $log_file)"
+  nohup ollama serve >"$log_file" 2>&1 </dev/null &
+  disown || true
+}
+ensure_ollama_running() {
+  if is_ollama_up; then
+    log "Ollama server already responding at $OLLAMA_HOST"
+    return 0
+  fi
+  if command -v brew >/dev/null && brew services list 2>/dev/null | grep -q '^ollama'; then
+    log "Starting ollama via brew services"
+    brew services start ollama || warn "brew services start ollama failed; will fall back"
+    if wait_for_ollama 30; then return 0; fi
+  fi
+  start_ollama_background
+  if wait_for_ollama 30; then
+    log "Ollama server is up at $OLLAMA_HOST"
+    return 0
+  fi
+  die "Ollama did not become reachable at $OLLAMA_HOST"
+}
+pull_model() {
+  local name="$1"
+  log "Pulling $name"
+  if ! ollama pull "$name"; then
+    die "Failed to pull $name. Check the tag at https://ollama.com/library"
+  fi
+  if ! curl -fsS "$OLLAMA_HOST/api/tags" | grep -Fq "\"$name\""; then
+    die "$name pulled but not visible in $OLLAMA_HOST/api/tags"
+  fi
+}
+
+if [ "${SKIP_OLLAMA:-0}" != "1" ]; then
+  if ! command -v ollama >/dev/null 2>&1; then
+    log "Installing Ollama via Homebrew"
+    brew install ollama
+  else
+    log "Ollama already installed: $(ollama --version || true)"
+  fi
+  ensure_ollama_running
+  if [ "${SKIP_PULL:-0}" != "1" ]; then
+    pull_model "$CHAT_MODEL"
+    pull_model "$COMPLETION_MODEL"
+    for m in $EXTRA_MODELS; do pull_model "$m"; done
+  fi
+else
+  if ! is_ollama_up && command -v ollama >/dev/null 2>&1; then
+    warn "SKIP_OLLAMA=1 but no server reachable; starting one for you"
+    ensure_ollama_running
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# 4. Install plugin files
+# -----------------------------------------------------------------------------
+install_into() {
+  local target="$1"     # e.g. ~/.vim/pack/ollama/start/ollama-coder
+  local label="$2"      # 'vim' / 'nvim'
+  log "Installing into $target ($label)"
+  rm -rf "$target"
+  mkdir -p "$target"
+  cp -r "$PLUGIN_SRC/plugin"   "$target/"
+  cp -r "$PLUGIN_SRC/autoload" "$target/"
+  cp -r "$PLUGIN_SRC/doc"      "$target/"
+  if [ "$label" = "vim" ]; then
+    vim -es -u NONE +"helptags $target/doc" +qa! || warn "helptags failed (non-fatal)"
+  else
+    nvim --headless +"helptags $target/doc" +qa! || warn "helptags failed (non-fatal)"
+  fi
+}
+
+if [ "$WANT_VIM" = 1 ]; then
+  install_into "$HOME/.vim/pack/ollama/start/ollama-coder" vim
+fi
+if [ "$WANT_NVIM" = 1 ]; then
+  install_into "${XDG_DATA_HOME:-$HOME/.local/share}/nvim/site/pack/ollama/start/ollama-coder" nvim
+fi
+
+# -----------------------------------------------------------------------------
+# 5. Sanity check
+# -----------------------------------------------------------------------------
+log "Sanity-checking plugin load"
+if [ "$WANT_VIM" = 1 ]; then
+  vim -es -u NONE -c "set rtp+=$HOME/.vim/pack/ollama/start/ollama-coder" \
+                  -c "runtime plugin/ollama-coder.vim" \
+                  -c "if exists(':OllamaChat') == 2 | qa! | else | cquit | endif" \
+    || die "vim failed to load the plugin"
+fi
+if [ "$WANT_NVIM" = 1 ]; then
+  nvim --headless -u NONE \
+        -c "set rtp+=${XDG_DATA_HOME:-$HOME/.local/share}/nvim/site/pack/ollama/start/ollama-coder" \
+        -c "runtime plugin/ollama-coder.vim" \
+        -c "if exists(':OllamaChat') == 2 | qa! | else | cquit | endif" \
+    || die "nvim failed to load the plugin"
+fi
+
+log "Done!"
+cat <<EOF
+
+Next steps:
+  - Restart Vim/Neovim (or :runtime plugin/ollama-coder.vim)
+  - Try:   :OllamaChat
+  - Try:   :OllamaWrite write to a new file C++ Hello World program
+  - Help:  :help ollama-coder
+  - Default keymaps live under <leader>o (e.g. <leader>oc opens chat).
+
+Models pulled:
+  chat        : $CHAT_MODEL
+  completion  : $COMPLETION_MODEL
+
+EOF

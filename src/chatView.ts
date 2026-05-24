@@ -27,15 +27,61 @@ const MAX_AGENT_STEPS = 8;
 // of these, we automatically run this one turn through the agent loop so the
 // model gets the write_file tool. The user sees a one-line notice in the UI.
 const FILE_WRITE_INTENT = [
+  // "create/add/make/write a file ..."
   /\b(create|make|add|write|generate|scaffold|bootstrap|new)\b[^.?!\n]*\bfile\b/i,
+  // "add X to/into/in test.cpp"
   /\b(add|insert|append|write|put)\b[^.?!\n]*\b(to|into|in)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  // "save ... to/into/as output.json"
   /\bsave\b[^.?!\n]*\b(to|into|as)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  // "edit foo.ts"
   /\bedit\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
-  /\b(modify|update|patch|refactor|fix)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  // "modify/update/patch/refactor/fix foo.py"
+  /\b(modify|update|patch|refactor|fix|implement)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  // "make/create hello.cpp ..." — verb directly followed by a filename
+  /\b(create|make|add|write|generate|new|touch|drop|put)\b\s+[\w./-]*\.[a-z0-9]{1,6}\b/i,
+  // "new C++ Hello World file" / "C++ hello world as a file" / "new <lang> file"
+  /\bnew\b[^.?!\n]*\b(file|program|script|module|class|header|test)\b/i,
+  /\b(file|program|script|module|class|header|test)\b[^.?!\n]*\b(in|using|with|for)\b\s+(c\+\+|cpp|c#|csharp|python|py|ruby|rust|go(?:lang)?|java(?:script)?|ts|typescript|js|kotlin|swift|bash|shell|sh|html|css)\b/i,
 ];
 
-function looksLikeFileWriteIntent(text: string): boolean {
+export function looksLikeFileWriteIntent(text: string): boolean {
   return FILE_WRITE_INTENT.some((re) => re.test(text));
+}
+
+/**
+ * Detect mentioned programming language(s) so we can give the agent a strong
+ * extension hint when the user only mentions a language by name
+ * (e.g. "write a new file C++ Hello World" — no ".cpp" anywhere).
+ */
+const LANG_EXT: Array<{ re: RegExp; name: string; ext: string }> = [
+  // \b doesn't work after '++' or '#' because both are non-word chars next
+  // to a non-word boundary (space/EOS). Use look-arounds instead.
+  { re: /(?:^|\W)(c\+\+|cpp)(?=\W|$)/i, name: "C++", ext: ".cpp" },
+  { re: /(?:^|\W)(c#|csharp)(?=\W|$)/i, name: "C#", ext: ".cs" },
+  { re: /\bobjective-?c\b/i, name: "Objective-C", ext: ".m" },
+  { re: /\bpython\b|\bpy\b/i, name: "Python", ext: ".py" },
+  { re: /\brust\b|\brs\b/i, name: "Rust", ext: ".rs" },
+  { re: /\bgo(?:lang)?\b/i, name: "Go", ext: ".go" },
+  { re: /\btypescript\b|\bts\b/i, name: "TypeScript", ext: ".ts" },
+  { re: /\bjavascript\b|\bjs\b/i, name: "JavaScript", ext: ".js" },
+  { re: /\bjava\b/i, name: "Java", ext: ".java" },
+  { re: /\bkotlin\b|\bkt\b/i, name: "Kotlin", ext: ".kt" },
+  { re: /\bswift\b/i, name: "Swift", ext: ".swift" },
+  { re: /\bruby\b|\brb\b/i, name: "Ruby", ext: ".rb" },
+  { re: /\bbash\b|\bshell\b|\bsh script\b/i, name: "Bash", ext: ".sh" },
+  { re: /\bhtml\b/i, name: "HTML", ext: ".html" },
+  { re: /\bcss\b/i, name: "CSS", ext: ".css" },
+  // C must come last so 'C++' / 'C#' wins. Use a negative lookahead so the
+  // 'c' in 'c++' / 'c#' doesn't get picked as plain C (regex \b treats + and #
+  // as word boundaries, which would otherwise match).
+  { re: /\bc\b(?!\+\+|#)/i, name: "C", ext: ".c" },
+];
+
+export function inferLanguageExt(
+  text: string
+): { name: string; ext: string } | undefined {
+  for (const e of LANG_EXT) if (e.re.test(text)) return { name: e.name, ext: e.ext };
+  return undefined;
 }
 
 /**
@@ -69,7 +115,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private history: ChatMessage[] = [];
   private inflight: AbortController | undefined;
 
-  constructor(private readonly ctx: vscode.ExtensionContext) {}
+  /** Persisted ring buffer of the user's most recent prompts (newest first). */
+  private cmdHistory: string[] = [];
+  private static readonly CMD_HISTORY_KEY = "ollamaCoder.cmdHistory";
+  private static readonly CMD_HISTORY_MAX = 100;
+
+  constructor(private readonly ctx: vscode.ExtensionContext) {
+    this.cmdHistory = ctx.globalState.get<string[]>(
+      ChatViewProvider.CMD_HISTORY_KEY,
+      []
+    );
+  }
+
+  private async rememberCommand(text: string) {
+    const t = text.trim();
+    if (!t) return;
+    // Dedup: move to front if already present.
+    this.cmdHistory = [t, ...this.cmdHistory.filter((x) => x !== t)].slice(
+      0,
+      ChatViewProvider.CMD_HISTORY_MAX
+    );
+    await this.ctx.globalState.update(
+      ChatViewProvider.CMD_HISTORY_KEY,
+      this.cmdHistory
+    );
+    this.post({ type: "history", items: this.cmdHistory });
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -80,6 +151,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       switch (msg.type) {
         case "ready":
           await this.sendModelList();
+          // Also push the persisted command history to the webview.
+          this.post({ type: "history", items: this.cmdHistory });
+          break;
+        case "clearHistory":
+          this.cmdHistory = [];
+          await this.ctx.globalState.update(
+            ChatViewProvider.CMD_HISTORY_KEY,
+            this.cmdHistory
+          );
+          this.post({ type: "history", items: [] });
           break;
         case "refreshModels":
           await this.sendModelList();
@@ -264,12 +345,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // tick the agent checkbox. Without this, the model just replies with a code
     // block and the requested file is never actually created on disk.
     let effectiveAgent = agent;
-    if (!agent && looksLikeFileWriteIntent(text)) {
+    const intent = looksLikeFileWriteIntent(text);
+    if (!agent && intent) {
       effectiveAgent = true;
       this.post({
         type: "notice",
         text: "Detected a file create/edit request \u2014 running this turn in agent mode so I can write the file.",
       });
+    }
+
+    // If the user only named a language ("C++ Hello World") without giving a
+    // filename, give the agent an explicit extension hint so it doesn't try to
+    // create a path-less file or guess the wrong extension. Only when intent
+    // is detected and the user didn't already include a path themselves.
+    if (intent && !/[\w./-]*\.[a-z0-9]{1,6}\b/i.test(text)) {
+      const lang = inferLanguageExt(text);
+      if (lang) {
+        userContent =
+          userContent +
+          `\n\n(Filename hint: the user did not specify a path. Use a sensible "${lang.ext}" file for ${lang.name}, e.g. "hello_world${lang.ext}".)`;
+      }
     }
 
     if (this.history.length === 0) {
@@ -283,6 +378,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.history[0] = { role: "system", content: SYSTEM_AGENT };
     }
     this.history.push({ role: "user", content: userContent });
+
+    // Persist the raw user text (without the auto-attached @mention contents)
+    // into the command history. Buttons in the chat log will let the user
+    // re-send or edit it later.
+    await this.rememberCommand(text);
 
     this.post({ type: "userMessage", text });
 
@@ -409,10 +509,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
          display: flex; flex-direction: column; height: 100vh; }
   #log { flex: 1; overflow-y: auto; padding: 8px; font-size: 13px; }
   .msg { margin-bottom: 12px; white-space: pre-wrap; word-wrap: break-word; }
-  .msg.user { color: var(--vscode-textLink-foreground); }
+  .msg.user { color: var(--vscode-textLink-foreground); position: relative; }
   .msg.assistant { color: var(--vscode-foreground); }
   .role { font-weight: bold; font-size: 11px; text-transform: uppercase;
           opacity: 0.7; margin-bottom: 2px; }
+  .msg.user .msg-actions { position: absolute; top: 0; right: 0; display: none; gap: 4px; }
+  .msg.user:hover .msg-actions { display: flex; }
+  .msg.user .msg-actions button { font-size: 10px; padding: 1px 6px; }
   .tool { font-size: 11px; opacity: 0.75; font-family: var(--vscode-editor-font-family);
           background: var(--vscode-textCodeBlock-background); padding: 4px 6px;
           border-radius: 4px; margin: 4px 0; }
@@ -444,12 +547,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                      color: var(--vscode-button-secondaryForeground); }
   label { font-size: 12px; opacity: 0.85; }
   #hint { font-size: 11px; opacity: 0.6; }
+  #history-panel { display: none; max-height: 180px; overflow-y: auto;
+                   border-top: 1px solid var(--vscode-panel-border);
+                   background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); }
+  #history-panel.open { display: block; }
+  #history-panel .item { padding: 4px 8px; cursor: pointer;
+                         border-bottom: 1px solid var(--vscode-panel-border);
+                         font-family: var(--vscode-editor-font-family); font-size: 12px;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                         display: flex; gap: 6px; align-items: center; }
+  #history-panel .item:hover { background: var(--vscode-list-hoverBackground); }
+  #history-panel .item .text { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  #history-panel .item button { font-size: 10px; padding: 1px 6px; opacity: 0; }
+  #history-panel .item:hover button { opacity: 1; }
+  #history-panel .empty { padding: 8px; opacity: 0.5; font-style: italic; }
+  #history-panel .header { display: flex; padding: 4px 8px; align-items: center;
+                           font-size: 11px; opacity: 0.8; border-bottom: 1px solid var(--vscode-panel-border); }
+  #history-panel .header button { font-size: 10px; padding: 1px 6px; margin-left: auto; }
 </style>
 </head>
 <body>
   <div id="log"></div>
+  <div id="history-panel">
+    <div class="header"><span>History (newest first)</span>
+      <button id="closeHistory" class="secondary">close</button>
+      <button id="clearHistory" class="secondary">clear</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
   <div id="bar">
-    <textarea id="input" placeholder="Ask anything. Use @path/to/file or @selection to attach context. Ctrl/Cmd+Enter to send."></textarea>
+    <textarea id="input" placeholder="Ask anything. Use @path/to/file or @selection to attach context. ↑/↓ walks history. Ctrl/Cmd+Enter to send."></textarea>
     <div id="row">
       <label style="display:flex;align-items:center;gap:4px">
         Model:
@@ -459,6 +586,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       <label><input type="checkbox" id="ctx" checked /> include current file/selection</label>
       <label><input type="checkbox" id="agent" /> agent mode (can read/write workspace)</label>
       <span style="flex:1"></span>
+      <button id="historyBtn" class="secondary" title="Show command history">☰ History</button>
       <button id="stop" class="secondary">Stop</button>
       <button id="clear" class="secondary">Clear</button>
       <button id="send">Send</button>
@@ -470,8 +598,52 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   const log = document.getElementById('log');
   const input = document.getElementById('input');
   const modelSel = document.getElementById('model');
+  const historyPanel = document.getElementById('history-panel');
+  const historyList = document.getElementById('history-list');
   let current = null;       // body element for current assistant message
   let currentRaw = "";
+  let cmdHistory = [];
+  // -1 means "on the fresh input line". 0..n-1 = walking history (newest first).
+  let histCursor = -1;
+  let histDraft = "";  // what the user had typed before they started walking history
+
+  function renderHistoryPanel() {
+    historyList.innerHTML = '';
+    if (!cmdHistory.length) {
+      const e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = 'No previous commands yet.';
+      historyList.appendChild(e);
+      return;
+    }
+    cmdHistory.forEach((t, i) => {
+      const d = document.createElement('div');
+      d.className = 'item';
+      d.title = t;
+      const txt = document.createElement('span');
+      txt.className = 'text';
+      txt.textContent = t.split('\n')[0];
+      const edit = document.createElement('button');
+      edit.textContent = '✎ edit';
+      edit.onclick = (ev) => { ev.stopPropagation(); input.value = t; input.focus(); historyPanel.classList.remove('open'); };
+      const resend = document.createElement('button');
+      resend.textContent = '↻ resend';
+      resend.onclick = (ev) => { ev.stopPropagation(); input.value = t; send(); historyPanel.classList.remove('open'); };
+      d.appendChild(txt);
+      d.appendChild(edit);
+      d.appendChild(resend);
+      d.onclick = () => { input.value = t; input.focus(); historyPanel.classList.remove('open'); };
+      historyList.appendChild(d);
+    });
+  }
+
+  document.getElementById('historyBtn').onclick = () => {
+    historyPanel.classList.toggle('open');
+  };
+  document.getElementById('closeHistory').onclick = () => historyPanel.classList.remove('open');
+  document.getElementById('clearHistory').onclick = () => {
+    if (confirm('Clear all command history?')) vscode.postMessage({ type: 'clearHistory' });
+  };
 
   function populateModels(list, current, error){
     modelSel.innerHTML = '';
@@ -538,7 +710,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   function addMsg(role, text){
     const d = document.createElement('div');
     d.className = 'msg ' + role;
-    d.innerHTML = '<div class="role">'+role+'</div><div class="body">'+render(text)+'</div>';
+    let actions = '';
+    if (role === 'user') {
+      // Allow re-sending or editing this very prompt.
+      const safe = encodeURIComponent(text);
+      actions = '<div class="msg-actions">' +
+        '<button data-resend="'+safe+'">↻ resend</button>' +
+        '<button data-edit="'+safe+'">✎ edit</button>' +
+        '</div>';
+    }
+    d.innerHTML = '<div class="role">'+role+'</div>'+actions+'<div class="body">'+render(text)+'</div>';
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
     return d.querySelector('.body');
@@ -570,7 +751,56 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   document.getElementById('stop').onclick = ()=>vscode.postMessage({type:'stop'});
   document.getElementById('clear').onclick = ()=>{ log.innerHTML=''; vscode.postMessage({type:'clear'}); };
   input.addEventListener('keydown', (e)=>{
-    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ e.preventDefault(); send(); }
+    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ e.preventDefault(); send(); return; }
+    // Shell-style history walk: ↑ at top of input goes back, ↓ at bottom goes forward.
+    if (e.key === 'ArrowUp') {
+      // Only step into history if the cursor is on the first visual line.
+      const before = input.value.slice(0, input.selectionStart || 0);
+      if (before.includes('\n')) return; // multi-line edit, leave native behaviour
+      if (histCursor === -1) histDraft = input.value;
+      if (histCursor + 1 < cmdHistory.length) {
+        histCursor++;
+        input.value = cmdHistory[histCursor];
+        input.setSelectionRange(input.value.length, input.value.length);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      const after = input.value.slice(input.selectionEnd || 0);
+      if (after.includes('\n')) return;
+      if (histCursor > 0) {
+        histCursor--;
+        input.value = cmdHistory[histCursor];
+        input.setSelectionRange(input.value.length, input.value.length);
+        e.preventDefault();
+      } else if (histCursor === 0) {
+        histCursor = -1;
+        input.value = histDraft;
+        input.setSelectionRange(input.value.length, input.value.length);
+        e.preventDefault();
+      }
+      return;
+    }
+    // Any normal typing exits history-walk mode.
+    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+      histCursor = -1;
+    }
+  });
+
+  // Delegated click handler for per-message resend/edit buttons.
+  log.addEventListener('click', (e)=>{
+    const r = e.target.closest('button[data-resend]');
+    const ed = e.target.closest('button[data-edit]');
+    if (r) {
+      const t = decodeURIComponent(r.getAttribute('data-resend'));
+      input.value = t;
+      send();
+    } else if (ed) {
+      const t = decodeURIComponent(ed.getAttribute('data-edit'));
+      input.value = t;
+      input.focus();
+    }
   });
 
   // Delegated handler for code-block action buttons.
@@ -617,6 +847,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     else if (m.type === 'models'){ populateModels(m.models, m.current, m.error); }
     else if (m.type === 'currentModel'){
       for (const o of modelSel.options) o.selected = (o.value === m.model);
+    }
+    else if (m.type === 'history'){
+      cmdHistory = m.items || [];
+      histCursor = -1;
+      renderHistoryPanel();
     }
   });
 

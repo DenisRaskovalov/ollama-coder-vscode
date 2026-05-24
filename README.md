@@ -7,6 +7,10 @@ Nothing leaves your machine.
 
 - **Inline ghost-text completion** as you type, using a FIM-capable model
   (defaults to `qwen2.5-coder:1.5b-base`). Debounced and cancellable.
+- **Command history** — every prompt you send is persisted. Press ↑/↓ in the
+  chat input to walk through past commands shell-style, click **History** for
+  a list view, or hover any past user message in the chat log for one-click
+  *resend* and *edit*.
 - **Chat sidebar** (Activity Bar → robot icon) with streaming responses, a
   one-click "include current file/selection" toggle, and `@mentions`:
   - `@src/foo.ts` — attach a workspace file's contents to your question.

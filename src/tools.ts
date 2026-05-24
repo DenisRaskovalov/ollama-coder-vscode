@@ -40,8 +40,34 @@ function workspaceRoot(): vscode.Uri {
 
 function resolveInsideWorkspace(rel: string): vscode.Uri {
   const root = workspaceRoot();
-  // Normalize and ensure we stay inside the workspace
-  const abs = vscode.Uri.joinPath(root, rel);
+
+  // Tolerate the most common shapes LLMs produce:
+  //   './foo.cpp', '/foo.cpp', '\\foo.cpp', backslash separators, leading '~/',
+  //   absolute paths that happen to live inside the workspace.
+  let r = String(rel).trim();
+  // Reject path traversal up front
+  if (r.includes("..")) {
+    throw new Error(`Path must not contain '..': ${rel}`);
+  }
+  // Normalise separators
+  r = r.replace(/\\/g, "/");
+  // Strip leading './', '/', '~/'
+  r = r.replace(/^\.\//, "").replace(/^~\//, "").replace(/^\/+/, "");
+
+  // Absolute path? If it's inside the workspace, make it relative.
+  if (path.isAbsolute(r)) {
+    const abs = vscode.Uri.file(r);
+    const rootPath = root.fsPath + path.sep;
+    if (abs.fsPath === root.fsPath || abs.fsPath.startsWith(rootPath)) {
+      r = path.relative(root.fsPath, abs.fsPath);
+    } else {
+      throw new Error(`Absolute path is outside the workspace: ${rel}`);
+    }
+  }
+
+  if (!r) throw new Error("Empty path");
+
+  const abs = vscode.Uri.joinPath(root, r);
   const rootPath = root.fsPath + path.sep;
   if (!(abs.fsPath === root.fsPath || abs.fsPath.startsWith(rootPath))) {
     throw new Error(`Path escapes the workspace: ${rel}`);
@@ -173,13 +199,23 @@ export async function executeTool(
 async function readFile(rel: string): Promise<string> {
   if (!rel) throw new Error("read_file: 'path' is required");
   const uri = resolveInsideWorkspace(rel);
-  const data = await vscode.workspace.fs.readFile(uri);
+  let data: Uint8Array;
+  try {
+    data = await vscode.workspace.fs.readFile(uri);
+  } catch (e: any) {
+    // Surface a structured 'not found' so the model can proceed with
+    // write_file for a brand-new file instead of giving up.
+    if (/ENOENT|not found|FileNotFound/i.test(String(e?.message ?? e))) {
+      return `File not found: ${rel}. (Safe to create with write_file.)`;
+    }
+    throw e;
+  }
   const bytes = data.byteLength;
   const slice =
     bytes > MAX_READ_BYTES
       ? data.subarray(0, MAX_READ_BYTES)
       : data;
-  const text = Buffer.from(slice).toString("utf8");
+  const text = Buffer.from(slice as Uint8Array).toString("utf8");
   const lines = text.split("\n");
   const numbered = lines
     .map((l, i) => `${String(i + 1).padStart(4, " ")}: ${l}`)

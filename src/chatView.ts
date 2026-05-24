@@ -6,17 +6,37 @@ import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 const SYSTEM_BASIC =
   "You are Ollama Coder, an expert pair-programmer running locally inside the user's VS Code. " +
   "Answer concisely. Use fenced code blocks for code. " +
-  "When you produce code intended for a specific file, start the fence with the path, e.g. ```ts src/foo.ts.";
+  "When you produce code intended for a specific file, ALWAYS put the path right after the language in the fence header, like ```ts src/foo.ts or ```cpp test.cpp. " +
+  "The user can click 'Save' on a code block and the path you wrote will be used as the filename.";
 
 const SYSTEM_AGENT =
-  SYSTEM_BASIC +
-  "\n\nYou have tools to read and modify the user's workspace. " +
-  "Prefer reading relevant files before answering. " +
-  "Before writing a file with write_file, ALWAYS read it first if it already exists. " +
-  "Keep each tool call focused; do not dump entire large files. " +
-  "When you are done, give a short final answer summarizing what you did or found.";
+  "You are Ollama Coder, an autonomous coding agent running locally in the user's VS Code. " +
+  "You have tools to read and modify the workspace. USE THEM.\n\n" +
+  "Rules:\n" +
+  "1. When the user asks you to create a NEW file, IMMEDIATELY call write_file with the path and full content. Do NOT first reply with the code in a chat message asking for confirmation \u2014 the user already gets a confirm dialog from the editor.\n" +
+  "2. When the user asks you to MODIFY an existing file, first call read_file to see its current contents, then call write_file with the COMPLETE new contents of the file (not a patch).\n" +
+  "3. If the user gives you a target filename like 'test.cpp', use exactly that path. If they don't, pick a sensible workspace-relative path with the right extension.\n" +
+  "4. Use list_files or search_text when you genuinely need to explore. Skip them for simple new-file requests.\n" +
+  "5. After the file is written, give a one-sentence summary like 'Created test.cpp with a Vector class.' Do not paste the code again in chat \u2014 it's already in the file.\n" +
+  "6. Use fenced code blocks only for tiny illustrative snippets or for the final summary. Do NOT dump full file contents in chat when you could call write_file instead.";
 
 const MAX_AGENT_STEPS = 8;
+
+// Patterns that strongly imply the user wants a file actually created or edited
+// on disk. When the chat is sent with agent mode OFF and the message matches one
+// of these, we automatically run this one turn through the agent loop so the
+// model gets the write_file tool. The user sees a one-line notice in the UI.
+const FILE_WRITE_INTENT = [
+  /\b(create|make|add|write|generate|scaffold|bootstrap|new)\b[^.?!\n]*\bfile\b/i,
+  /\b(add|insert|append|write|put)\b[^.?!\n]*\b(to|into|in)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  /\bsave\b[^.?!\n]*\b(to|into|as)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  /\bedit\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+  /\b(modify|update|patch|refactor|fix)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+];
+
+function looksLikeFileWriteIntent(text: string): boolean {
+  return FILE_WRITE_INTENT.some((re) => re.test(text));
+}
 
 /**
  * Render tool arguments as a short single-line JSON for the chat UI.
@@ -240,13 +260,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const { text: cleaned, attachments } = await this.expandMentions(userContent);
     userContent = cleaned + attachments.join("");
 
+    // Auto-route file-write intents to the agent loop even if the user didn't
+    // tick the agent checkbox. Without this, the model just replies with a code
+    // block and the requested file is never actually created on disk.
+    let effectiveAgent = agent;
+    if (!agent && looksLikeFileWriteIntent(text)) {
+      effectiveAgent = true;
+      this.post({
+        type: "notice",
+        text: "Detected a file create/edit request \u2014 running this turn in agent mode so I can write the file.",
+      });
+    }
+
     if (this.history.length === 0) {
       this.history.push({
         role: "system",
-        content: agent ? SYSTEM_AGENT : SYSTEM_BASIC,
+        content: effectiveAgent ? SYSTEM_AGENT : SYSTEM_BASIC,
       });
-    } else if (agent) {
-      // If user just toggled agent mode mid-conversation, upgrade system prompt.
+    } else if (effectiveAgent) {
+      // If user just toggled (or we auto-toggled) agent mode mid-conversation,
+      // upgrade the system prompt.
       this.history[0] = { role: "system", content: SYSTEM_AGENT };
     }
     this.history.push({ role: "user", content: userContent });
@@ -257,7 +290,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.inflight = ctrl;
 
     try {
-      if (agent) {
+      if (effectiveAgent) {
         await this.runAgentLoop(endpoint, model, temperature, ctrl.signal);
       } else {
         await this.runSingleTurn(endpoint, model, temperature, ctrl.signal);
@@ -299,7 +332,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     temperature: number,
     signal: AbortSignal
   ) {
-    for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+    const maxSteps = vscode.workspace
+      .getConfiguration("ollamaCoder")
+      .get<number>("agentMaxSteps", MAX_AGENT_STEPS);
+    for (let step = 0; step < maxSteps; step++) {
       this.post({ type: "assistantStart" });
       const r = await chatFull({
         endpoint,
@@ -356,7 +392,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     this.post({
       type: "assistantError",
-      text: `(agent stopped after ${MAX_AGENT_STEPS} steps)`,
+      text: `(agent stopped after ${maxSteps} steps)`,
     });
   }
 
@@ -381,6 +417,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           background: var(--vscode-textCodeBlock-background); padding: 4px 6px;
           border-radius: 4px; margin: 4px 0; }
   .tool .name { color: var(--vscode-symbolIcon-functionForeground, #c586c0); font-weight: bold; }
+  .notice { font-size: 11px; opacity: 0.8; font-style: italic;
+            padding: 4px 6px; margin: 4px 0;
+            border-left: 2px solid var(--vscode-focusBorder, #007acc); }
   .tool .preview { opacity: 0.7; display: block; margin-top: 2px;
                    max-height: 80px; overflow: hidden; }
   pre { background: var(--vscode-textCodeBlock-background); padding: 6px;
@@ -560,6 +599,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     else if (m.type === 'assistantToken'){ currentRaw += m.text; if(current) current.innerHTML = render(currentRaw); log.scrollTop = log.scrollHeight; }
     else if (m.type === 'assistantEnd'){ current = null; }
     else if (m.type === 'assistantError'){ if(current) current.textContent = m.text; else addMsg('assistant', m.text); current = null; }
+    else if (m.type === 'notice'){
+      const d = document.createElement('div');
+      d.className = 'notice';
+      d.textContent = m.text;
+      log.appendChild(d);
+      log.scrollTop = log.scrollHeight;
+    }
     else if (m.type === 'toolCall'){ lastTool = addTool(m.name, m.args); }
     else if (m.type === 'toolResult'){
       if (lastTool) {

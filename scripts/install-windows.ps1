@@ -34,8 +34,28 @@ function Die       ($m) { Write-Host "xx  $m" -ForegroundColor Red; exit 1 }
 
 # Defaults
 $CODE_BIN         = if ($env:CODE_BIN)         { $env:CODE_BIN }         else { 'code' }
-$CHAT_MODEL       = if ($env:CHAT_MODEL)       { $env:CHAT_MODEL }       else { 'llama3.1:8b' }
-$COMPLETION_MODEL = if ($env:COMPLETION_MODEL) { $env:COMPLETION_MODEL } else { 'qwen2.5-coder:1.5b-base' }
+# Auto-pick chat & completion models based on system RAM, unless the user
+# explicitly set $env:CHAT_MODEL / $env:COMPLETION_MODEL. See
+# scripts/pick-models.ps1 for the tier table.
+$_AUTO_CHAT = ''; $_AUTO_COMP = ''; $_AUTO_TIER = ''; $_AUTO_RAM_GB = ''
+$_PickScript = Join-Path $PSScriptRoot "pick-models.ps1"
+if (Test-Path $_PickScript) {
+  try {
+    $_PickOut = & pwsh -NoProfile -File $_PickScript 2>$null
+    if (-not $_PickOut) { $_PickOut = & powershell -NoProfile -File $_PickScript 2>$null }
+    foreach ($line in ($_PickOut -split "`r?`n")) {
+      if     ($line -match '^CHAT_MODEL=(.+)$')       { $_AUTO_CHAT     = $matches[1] }
+      elseif ($line -match '^COMPLETION_MODEL=(.+)$') { $_AUTO_COMP     = $matches[1] }
+      elseif ($line -match '^TIER=(.+)$')             { $_AUTO_TIER     = $matches[1] }
+      elseif ($line -match '^RAM_GB=(.+)$')           { $_AUTO_RAM_GB   = $matches[1] }
+    }
+  } catch { }
+}
+$CHAT_MODEL       = if ($env:CHAT_MODEL)       { $env:CHAT_MODEL }       elseif ($_AUTO_CHAT) { $_AUTO_CHAT } else { 'llama3.1:8b' }
+$COMPLETION_MODEL = if ($env:COMPLETION_MODEL) { $env:COMPLETION_MODEL } elseif ($_AUTO_COMP) { $_AUTO_COMP } else { 'qwen2.5-coder:1.5b-base' }
+if ($_AUTO_TIER) {
+  Write-Host ("==> Detected {0} GB RAM (tier: {1}) -> chat={2}, completion={3}" -f $_AUTO_RAM_GB, $_AUTO_TIER, $CHAT_MODEL, $COMPLETION_MODEL) -ForegroundColor Cyan
+}
 $OLLAMA_HOST      = if ($env:OLLAMA_HOST)      { $env:OLLAMA_HOST }      else { 'http://127.0.0.1:11434' }
 $EXTRA_MODELS     = if ($env:EXTRA_MODELS)     { $env:EXTRA_MODELS }     else { '' }
 

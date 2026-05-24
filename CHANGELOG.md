@@ -5,6 +5,49 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] — unreleased
+
+Agent capability bump, inspired by ideas from open-source coding agents.
+
+### Added
+- **`edit_file` tool** — Aider-style SEARCH/REPLACE patch. The model
+  supplies `{ path, search, replace }`; the helper requires `search` to
+  appear exactly once in the file and rejects with an actionable retry
+  message otherwise (so a small model can iterate). Normalises CRLF to
+  LF so a stray Windows line ending doesn’t break a correct patch.
+  Order-of-magnitude cheaper in tokens than re-emitting the whole file
+  for a 3-line change, and much more reliable on smaller chat models.
+- **`repo_map` tool** — returns a compact textual map of the workspace:
+  every source file with its top-level symbols (functions, classes,
+  methods, types) and 1-based line numbers. Per-language regex
+  extractors for TypeScript / JS / Python / Ruby / Go / Rust / Java /
+  C/C++ / Bash. Capped to ~12 KB so it fits in a context window. Gives
+  the agent navigation “vision” without having to read every file.
+- The agent system prompt now actively coaches the model to:
+  - Use `repo_map` first when unsure where to look.
+  - Use `edit_file` instead of `write_file` for modifications.
+  - Re-read with `read_file` before patching.
+
+## [1.4.2] — unreleased
+
+### Added
+- **LLM router** (ARCHITECTURE.md §4.3, step 4a). New `src/router.ts` calls
+  a small fast model with `format: 'json'` and returns a structured
+  `RoutePlan` (`kind`, `target_path`, `rephrased`, `reason`). Off by
+  default; opt in via `ollamaCoder.useLlmRouter` for authoritative
+  routing or `ollamaCoder.shadowLlmRouter` for shadow-mode logging.
+  `ollamaCoder.routerModel` lets you override which model handles
+  routing (defaults to the completion model). Schema-validated; the
+  router cannot make the plugin do anything outside the allowed kinds.
+- **`run_command` tool** for the agent. Runs a shell command in the
+  workspace root with a modal confirm dialog (model cannot bypass it),
+  a kill-after-timeout (`ollamaCoder.runCommandTimeoutMs`, default 30s),
+  and a 16KB output cap. Disabled by default; flip
+  `ollamaCoder.enableRunCommand` to allow it. Each invocation still
+  requires a per-call user click.
+- `ollama.chatFull` learned `format: 'json'` for forced-structured
+  output (used by the router; available for any caller).
+
 ## [1.4.1] — unreleased
 
 ### Added

@@ -3,6 +3,7 @@ import { chatFull, ChatMessage, listModels } from "./ollama";
 import { TOOL_SCHEMAS, executeTool, ToolCall } from "./tools";
 import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 import { searchWeb, SearchResult } from "./web";
+import { routeWithModel, RoutePlan } from "./router";
 
 const SYSTEM_BASIC =
   "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -12,14 +13,23 @@ const SYSTEM_BASIC =
 
 const SYSTEM_AGENT =
   "You are Ollama Free Coder, an autonomous coding agent running locally in the user's VS Code. " +
-  "You have tools to read and modify the workspace. USE THEM.\n\n" +
-  "Rules:\n" +
-  "1. When the user asks you to create a NEW file, IMMEDIATELY call write_file with the path and full content. Do NOT first reply with the code in a chat message asking for confirmation \u2014 the user already gets a confirm dialog from the editor.\n" +
-  "2. When the user asks you to MODIFY an existing file, first call read_file to see its current contents, then call write_file with the COMPLETE new contents of the file (not a patch).\n" +
-  "3. If the user gives you a target filename like 'test.cpp', use exactly that path. If they don't, pick a sensible workspace-relative path with the right extension.\n" +
-  "4. Use list_files or search_text when you genuinely need to explore. Skip them for simple new-file requests.\n" +
-  "5. After the file is written, give a one-sentence summary like 'Created test.cpp with a Vector class.' Do not paste the code again in chat \u2014 it's already in the file.\n" +
-  "6. Use fenced code blocks only for tiny illustrative snippets or for the final summary. Do NOT dump full file contents in chat when you could call write_file instead.";
+  "You have tools to read, navigate, and modify the workspace. USE THEM.\n\n" +
+  "Choosing the right tool:\n" +
+  "- repo_map      \u2014 use FIRST when you don't know where to look. It returns a compact map of the workspace with top-level symbols and line numbers. Cheaper than reading every file blindly.\n" +
+  "- read_file     \u2014 when you need the actual contents of a known file (e.g. before editing).\n" +
+  "- search_text   \u2014 when you need to find which file(s) mention a specific symbol.\n" +
+  "- list_files    \u2014 for directory layout questions only.\n" +
+  "- edit_file     \u2014 PREFER THIS for modifying an existing file. Provide a SEARCH/REPLACE patch: 'search' must appear EXACTLY ONCE in the file. Copy whitespace verbatim from read_file output. To create a NEW file with edit_file, pass an empty 'search'.\n" +
+  "- write_file    \u2014 only for new files or full rewrites. PREFER edit_file when modifying.\n" +
+  "- web_search    \u2014 when the answer depends on up-to-date public information.\n" +
+  "- run_command   \u2014 when shell execution is genuinely required (and only if the user enabled it).\n" +
+  "\n" +
+  "Workflow rules:\n" +
+  "1. Brand-new file -> edit_file (empty search) or write_file. IMMEDIATELY, don't ask first.\n" +
+  "2. Modify existing file -> read_file first, then edit_file with a minimal SEARCH/REPLACE patch. Do NOT rewrite the entire file when only a few lines change.\n" +
+  "3. Don't know the codebase -> repo_map first.\n" +
+  "4. After the change, give a one-sentence summary. Don't paste the code in chat \u2014 it's already in the file.\n" +
+  "5. Use fenced code blocks only for tiny illustrative snippets or for the final summary.";
 
 const MAX_AGENT_STEPS = 8;
 
@@ -514,30 +524,80 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    // Auto-route file-write intents to the agent loop even if the user didn't
-    // tick the agent checkbox. Without this, the model just replies with a code
-    // block and the requested file is never actually created on disk.
-    //
-    // BUT: if the prompt looks like the user wants the answer shown on screen
-    // ("show me ...", "what is ...", "explain ...", "give me an example ...",
-    // "... in chat", etc.), that overrides the file-write routing. The user
-    // can still force a file write by ticking the agent checkbox.
+    // ------------------------------------------------------------------
+    // Routing. Per ARCHITECTURE.md §4.3 we are migrating from regex
+    // classifiers to an LLM-driven router. This block runs both:
+    //   - the regex pipeline (authoritative today, fallback later),
+    //   - the LLM router, in shadow mode by default (logged only) or
+    //     authoritative when ollamaCoder.useLlmRouter == true.
+    // ------------------------------------------------------------------
     let effectiveAgent = agent;
     const intent = looksLikeFileWriteIntent(text);
     const showIntent = looksLikeShowIntent(text);
-    if (!agent && intent && showIntent) {
-      this.post({
-        type: "notice",
-        text:
-          "Looks like you want this shown on screen \u2014 " +
-          "replying in chat (no files will be written). Tick \u201cagent mode\u201d to override.",
-      });
-    } else if (!agent && intent) {
-      effectiveAgent = true;
-      this.post({
-        type: "notice",
-        text: "Detected a file create/edit request \u2014 running this turn in agent mode so I can write the file.",
-      });
+
+    const useLlmRouter = cfg.get<boolean>("useLlmRouter", false);
+    let routerPlan: RoutePlan | null = null;
+    if (useLlmRouter || cfg.get<boolean>("shadowLlmRouter", false)) {
+      try {
+        const routerModel =
+          cfg.get<string>("routerModel", "") ||
+          cfg.get<string>("completionModel", "qwen2.5-coder:1.5b-base");
+        const ed = vscode.window.activeTextEditor;
+        routerPlan = await routeWithModel({
+          endpoint,
+          model: routerModel,
+          userText: text,
+          hasSelection: !!ed && !ed.selection.isEmpty,
+          activeFile: ed ? vscode.workspace.asRelativePath(ed.document.uri) : undefined,
+        });
+        if (routerPlan) {
+          this.post({
+            type: "notice",
+            text: `Router (${routerModel}): ${routerPlan.kind}${
+              routerPlan.target_path ? " → " + routerPlan.target_path : ""
+            }${routerPlan.reason ? " — " + routerPlan.reason : ""}`,
+          });
+        } else if (useLlmRouter) {
+          this.post({
+            type: "notice",
+            text:
+              "LLM router returned no plan; falling back to the regex pipeline for this turn.",
+          });
+        }
+      } catch {
+        /* router is advisory; failures are silent */
+      }
+    }
+
+    if (useLlmRouter && routerPlan) {
+      // Authoritative LLM-driven routing.
+      if (routerPlan.kind === "create_file" || routerPlan.kind === "edit_file") {
+        effectiveAgent = true;
+        if (routerPlan.target_path) {
+          userContent =
+            userContent +
+            `\n\n(Router hint: target file is ${routerPlan.target_path}.)`;
+        }
+      }
+      // chat / explain_selection / refactor_selection / run_command default to
+      // their normal paths. web_search_then_chat is handled below.
+    } else {
+      // Existing regex pipeline (still authoritative when LLM router off).
+      if (!agent && intent && showIntent) {
+        this.post({
+          type: "notice",
+          text:
+            "Looks like you want this shown on screen \u2014 " +
+            "replying in chat (no files will be written). Tick \u201cagent mode\u201d to override.",
+        });
+      } else if (!agent && intent) {
+        effectiveAgent = true;
+        this.post({
+          type: "notice",
+          text:
+            "Detected a file create/edit request \u2014 running this turn in agent mode so I can write the file.",
+        });
+      }
     }
 
     // If the user only named a language ("C++ Hello World") without giving a

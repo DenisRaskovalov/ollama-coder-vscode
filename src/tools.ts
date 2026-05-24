@@ -1,6 +1,13 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { spawn } from "child_process";
 import { searchWeb } from "./web";
+import { applySearchReplace } from "./editFile";
+import {
+  extractSymbols,
+  renderRepoMap,
+  RepoMapEntry,
+} from "./repoMap";
 
 /**
  * Workspace tools the LLM agent can call. Each tool has:
@@ -140,6 +147,40 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     type: "function",
     function: {
+      name: "edit_file",
+      description:
+        "Apply a SEARCH/REPLACE patch to an existing workspace file. PREFER this over write_file when modifying an existing file \u2014 it's far cheaper and more reliable than re-emitting the whole file. The 'search' string must appear EXACTLY ONCE in the current file contents (whitespace and line endings matter; copy them verbatim from read_file output). To create a NEW file, pass an empty 'search' and put the full contents in 'replace'. The user is shown a diff and must confirm.",
+      parameters: {
+        type: "object",
+        properties: {
+          path:    { type: "string", description: "Workspace-relative file path." },
+          search:  { type: "string", description: "Exact text to find. Empty when creating a new file." },
+          replace: { type: "string", description: "Text to put in its place." },
+        },
+        required: ["path", "search", "replace"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "repo_map",
+      description:
+        "Return a compact map of the workspace: every text source file with its top-level symbols (functions, classes, methods) and their line numbers. Use this BEFORE read_file when you don't know which file to look at \u2014 it's cheaper than listing every file and reading them blindly.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Optional workspace-relative subdirectory to map. Defaults to the workspace root.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "write_file",
       description:
         "Create or overwrite a file in the workspace with the given content. Use sparingly — the user will see a diff and may revert. Always read the file first if you intend to modify it.",
@@ -160,6 +201,29 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       description:
         "Return the workspace-relative paths of the currently open editors and which one is active, plus any current selection range.",
       parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_command",
+      description:
+        "Run a shell command in the workspace root. The user sees a confirm dialog with the exact command before it runs. Returns combined stdout+stderr (up to 16KB) plus the exit code. Use sparingly; prefer the file-editing tools where possible. Disabled by default; enable with the ollamaCoder.enableRunCommand setting.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description:
+              "The command line to execute via /bin/sh -c (POSIX) or cmd /c (Windows). E.g. 'npm test', 'cargo build --release'.",
+          },
+          cwd: {
+            type: "string",
+            description: "Optional workspace-relative working directory. Defaults to the workspace root.",
+          },
+        },
+        required: ["command"],
+      },
     },
   },
   {
@@ -209,12 +273,28 @@ export async function executeTool(
           String(call.arguments.content ?? ""),
           opts.requireConfirmForWrites !== false
         );
+      case "edit_file":
+        return await editFileTool(
+          String(call.arguments.path ?? ""),
+          String(call.arguments.search ?? ""),
+          String(call.arguments.replace ?? ""),
+          opts.requireConfirmForWrites !== false
+        );
+      case "repo_map":
+        return await repoMapTool(
+          call.arguments.path ? String(call.arguments.path) : "."
+        );
       case "get_open_editors":
         return getOpenEditors();
       case "web_search":
         return await runWebSearch(
           String(call.arguments.query ?? ""),
           Number(call.arguments.limit ?? 5)
+        );
+      case "run_command":
+        return await runShellCommand(
+          String(call.arguments.command ?? ""),
+          call.arguments.cwd ? String(call.arguments.cwd) : undefined
         );
       default:
         return `ERROR: unknown tool '${call.name}'`;
@@ -416,6 +496,195 @@ function guessLang(p: string): string {
     sh: "shellscript", html: "html", css: "css",
   };
   return map[ext] ?? "plaintext";
+}
+
+/* --------------------- edit_file (SEARCH/REPLACE) --------------------- */
+
+async function editFileTool(
+  rel: string,
+  search: string,
+  replace: string,
+  requireConfirm: boolean
+): Promise<string> {
+  if (!rel) return "ERROR: edit_file: 'path' is required";
+  let uri: vscode.Uri;
+  try {
+    uri = resolveInsideWorkspace(rel);
+  } catch (e: any) {
+    return `ERROR: ${e.message}`;
+  }
+
+  let oldText = "";
+  let existed = true;
+  try {
+    const buf = await vscode.workspace.fs.readFile(uri);
+    oldText = Buffer.from(buf).toString("utf8");
+  } catch {
+    existed = false;
+  }
+
+  const result = applySearchReplace(oldText, search, replace);
+  if (!result.ok) return `ERROR: ${result.message}`;
+  if (existed && result.newContent === oldText) {
+    return `No changes: ${rel} already matches the requested edit.`;
+  }
+
+  if (requireConfirm) {
+    const verb = existed ? "Apply edit to" : "Create";
+    const pick = await vscode.window.showWarningMessage(
+      `Ollama Free Coder agent: ${verb.toLowerCase()} ${rel}? (${result.message})`,
+      { modal: false },
+      existed ? "Apply" : "Create",
+      "Show diff first",
+      "Reject"
+    );
+    if (pick === "Reject" || !pick) {
+      return `User rejected edit to ${rel}.`;
+    }
+    if (pick === "Show diff first") {
+      await showDiff(uri, oldText, result.newContent!, rel);
+      const confirm = await vscode.window.showWarningMessage(
+        `Apply edit to ${rel}?`,
+        { modal: true },
+        existed ? "Apply" : "Create"
+      );
+      if (!confirm) return `User rejected edit to ${rel}.`;
+    }
+  }
+
+  const parent = vscode.Uri.joinPath(uri, "..");
+  try {
+    await vscode.workspace.fs.createDirectory(parent);
+  } catch {
+    /* ignore */
+  }
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(result.newContent!, "utf8"));
+  return `${existed ? "Edited" : "Created"} ${rel}. ${result.message}`;
+}
+
+/* --------------------------- repo_map -------------------------------- */
+
+async function repoMapTool(rel: string): Promise<string> {
+  const includeGlob = rel === "." || rel === "" ? "**/*" : `${rel.replace(/\/$/, "")}/**/*`;
+  const uris = await vscode.workspace.findFiles(
+    includeGlob,
+    "**/{node_modules,.git,out,dist,build,target,.vscode,vendor,coverage}/**",
+    2000
+  );
+  const MAX_FILE_BYTES = 200 * 1024;
+  const entries: RepoMapEntry[] = [];
+  for (const uri of uris) {
+    let buf: Uint8Array;
+    try {
+      buf = await vscode.workspace.fs.readFile(uri);
+    } catch {
+      continue;
+    }
+    if (buf.byteLength > MAX_FILE_BYTES) continue;
+    const filename = vscode.workspace.asRelativePath(uri);
+    const symbols = extractSymbols(filename, Buffer.from(buf).toString("utf8"));
+    if (symbols.length === 0) continue;
+    entries.push({ path: filename, symbols });
+  }
+  if (!entries.length) {
+    return `No source files with extractable symbols under ${rel || "."}.`;
+  }
+  return `Repo map (${entries.length} files):\n` + renderRepoMap(entries);
+}
+
+async function runShellCommand(
+  command: string,
+  cwdRel: string | undefined
+): Promise<string> {
+  if (!command.trim()) return "ERROR: run_command: 'command' is required";
+
+  const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+  if (!cfg.get<boolean>("enableRunCommand", false)) {
+    return (
+      "ERROR: run_command is disabled by default. Enable it in Settings -> " +
+      "'Ollama Free Coder: Enable Run Command' if you trust the agent to " +
+      "execute shell commands (each one still requires user confirmation)."
+    );
+  }
+
+  const root = workspaceRoot();
+  let cwd = root.fsPath;
+  if (cwdRel) {
+    try {
+      cwd = resolveInsideWorkspace(cwdRel).fsPath;
+    } catch (e: any) {
+      return `ERROR: ${e.message}`;
+    }
+  }
+
+  // Confirmation is REQUIRED. The model cannot bypass this.
+  const preview = command.length > 200 ? command.slice(0, 197) + "..." : command;
+  const pick = await vscode.window.showWarningMessage(
+    `Ollama Free Coder agent wants to run:\n\n  ${preview}\n\nin ${vscode.workspace.asRelativePath(cwd) || "."}`,
+    { modal: true },
+    "Run",
+    "Reject"
+  );
+  if (pick !== "Run") return `User rejected the command: ${preview}`;
+
+  const timeoutMs = cfg.get<number>("runCommandTimeoutMs", 30000);
+  const isWin = process.platform === "win32";
+  const shell = isWin ? "cmd.exe" : "/bin/sh";
+  const shellArgs = isWin ? ["/c", command] : ["-c", command];
+
+  return await new Promise<string>((resolve) => {
+    const child = spawn(shell, shellArgs, { cwd, env: process.env });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    const MAX = 16 * 1024;
+    let killed = false;
+
+    const t = setTimeout(() => {
+      killed = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }, timeoutMs);
+
+    const onData = (b: Buffer) => {
+      if (bytes >= MAX) return;
+      const room = MAX - bytes;
+      if (b.length <= room) {
+        chunks.push(b);
+        bytes += b.length;
+      } else {
+        chunks.push(b.subarray(0, room));
+        bytes = MAX;
+      }
+    };
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+
+    child.on("error", (e) => {
+      clearTimeout(t);
+      resolve(`ERROR: failed to spawn shell: ${e.message}`);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(t);
+      const body = Buffer.concat(chunks).toString("utf8");
+      const trailer = bytes >= MAX ? "\n... [truncated to 16KB]" : "";
+      if (killed) {
+        resolve(
+          `command killed after ${timeoutMs}ms timeout. Output so far:\n${body}${trailer}`
+        );
+        return;
+      }
+      const tag =
+        code === 0
+          ? "exit 0"
+          : signal
+          ? `signal ${signal}`
+          : `exit ${code ?? "?"}`;
+      resolve(`Command finished (${tag}). Output:\n${body}${trailer}`);
+    });
+  });
 }
 
 async function runWebSearch(query: string, limit: number): Promise<string> {

@@ -2,7 +2,7 @@
   "name": "ollama-free-coder",
   "displayName": "Ollama Free Coder",
   "description": "Code with a local Ollama LLM: inline completion, chat sidebar with @mentions and apply buttons, agent mode (read/write workspace via tools), explain/refactor/fix/tests/docstrings on selection.",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "publisher": "DenRaskovalov",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -106,6 +106,31 @@
           "type": "string",
           "default": "",
           "description": "Optional Google Programmable Search Engine (CSE) id. Create one at https://programmablesearchengine.google.com/ and enable 'Search the entire web'."
+        },
+        "ollamaCoder.useLlmRouter": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use a small LLM to classify the user's intent instead of the built-in regex pipeline. See ARCHITECTURE.md §4.3 for the migration plan."
+        },
+        "ollamaCoder.shadowLlmRouter": {
+          "type": "boolean",
+          "default": false,
+          "description": "Call the LLM router on every turn and surface its decision as a notice, but keep the regex pipeline authoritative. Useful for tuning the router prompt."
+        },
+        "ollamaCoder.routerModel": {
+          "type": "string",
+          "default": "",
+          "description": "Model to use for the LLM router. Empty falls back to ollamaCoder.completionModel — small fast models are best (e.g. qwen2.5-coder:1.5b-base)."
+        },
+        "ollamaCoder.enableRunCommand": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the agent to call the run_command tool. Each command still requires a per-invocation user confirmation. Off by default."
+        },
+        "ollamaCoder.runCommandTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Maximum wall-clock time (ms) a single run_command invocation may take before it's killed."
         }
       }
     },

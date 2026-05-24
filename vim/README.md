@@ -107,12 +107,18 @@ let g:ollama_coder_google_api_key     = ''             " optional, for 'google'
 let g:ollama_coder_google_cse_id      = ''             " optional, for 'google'
 ```
 
-### Web search tool
+### Web search
 
-The agent has a `web_search(query, limit?)` tool. By default it queries
-**DuckDuckGo** (no key, no quota). Set `g:ollama_coder_search_backend = 'google'`
-together with the two key vars to switch to Google Custom Search JSON API
-(free quota: 100 queries/day). Get the keys at:
+Two entry points:
+
+- `:OllamaSearch {query}` — runs a web search directly and dumps the
+  top hits into the chat buffer. No LLM involved.
+- The agent can call `web_search(query, limit?)` during `:OllamaWrite`
+  turns.
+
+Default backend is **DuckDuckGo** (no key, no quota). Set
+`g:ollama_coder_search_backend = 'google'` together with the two key vars
+to switch to Google Custom Search JSON API (free quota: 100 queries/day):
 - API key: <https://console.cloud.google.com/apis/credentials>
 - CSE id:  <https://programmablesearchengine.google.com/>
 

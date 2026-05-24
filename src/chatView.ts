@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { chatFull, ChatMessage, listModels } from "./ollama";
 import { TOOL_SCHEMAS, executeTool, ToolCall } from "./tools";
 import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
+import { searchWeb, SearchResult } from "./web";
 
 const SYSTEM_BASIC =
   "You are Ollama Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -72,6 +73,48 @@ const SHOW_INTENT = [
 
 export function looksLikeShowIntent(text: string): boolean {
   return SHOW_INTENT.some((re) => re.test(text));
+}
+
+/**
+ * Prompts that strongly imply the user wants the web consulted before the
+ * model answers. When this fires we run a web_search up front, append the
+ * results as context, and tell the model to use them. Works even when the
+ * agent toggle is off \u2014 it's straight retrieval-augmented chat.
+ */
+const WEB_SEARCH_INTENT = [
+  /\b(google|bing|duckduckgo|ddg|websearch|web\s+search)\b/i,
+  /\bsearch\s+(the\s+)?(web|internet|online)\b/i,
+  /\blook\s+((it|that|this)\s+)?up\s+(online|on\s+the\s+web|in\s+google)\b/i,
+  /\b(latest|recent|current|today'?s|this\s+week's|news\s+on|news\s+about)\b/i,
+  /\bwhat'?s?\s+new\s+in\b/i,
+];
+
+export function looksLikeWebSearchIntent(text: string): boolean {
+  return WEB_SEARCH_INTENT.some((re) => re.test(text));
+}
+
+/**
+ * Slash command parser. Recognised:
+ *   /search <query>
+ *   /web    <query>
+ *   /google <query>
+ */
+export function parseSlashSearch(text: string): string | null {
+  const m = text.match(/^\s*\/(search|web|google)\s+([\s\S]+)$/i);
+  return m ? m[2].trim() : null;
+}
+
+function formatSearchResults(
+  query: string,
+  backend: string,
+  results: SearchResult[]
+): string {
+  if (!results.length) return `No web results for ${JSON.stringify(query)}.`;
+  const lines = results.map(
+    (r, i) =>
+      `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet.slice(0, 240)}`
+  );
+  return `Search (${backend}) for "${query}":\n${lines.join("\n")}`;
 }
 
 /**
@@ -235,6 +278,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           .get<string>("chatModel", "");
         this.post({ type: "currentModel", model: m });
       }
+      if (
+        e.affectsConfiguration("ollamaCoder.searchBackend") ||
+        e.affectsConfiguration("ollamaCoder.googleApiKey") ||
+        e.affectsConfiguration("ollamaCoder.googleCseId")
+      ) {
+        this.sendSearchBackend();
+      }
     });
     this.ctx.subscriptions.push(cfgSub);
   }
@@ -251,6 +301,70 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       error = e?.message ?? String(e);
     }
     this.post({ type: "models", models, current, error });
+    this.sendSearchBackend();
+  }
+
+  private sendSearchBackend() {
+    const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+    const wanted = cfg.get<string>("searchBackend", "duckduckgo");
+    const hasGoogle =
+      !!cfg.get<string>("googleApiKey", "") &&
+      !!cfg.get<string>("googleCseId", "");
+    const effective =
+      wanted === "google" && hasGoogle ? "Google" : "DuckDuckGo";
+    this.post({ type: "searchBackend", label: effective });
+  }
+
+  private async doWebSearch(
+    query: string,
+    limit: number
+  ): Promise<{ results: SearchResult[]; backend: string }> {
+    const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+    const backend = cfg.get<string>("searchBackend", "duckduckgo") as
+      | "duckduckgo"
+      | "google";
+    const googleApiKey = cfg.get<string>("googleApiKey", "");
+    const googleCseId = cfg.get<string>("googleCseId", "");
+    const results = await searchWeb(query, {
+      backend,
+      limit,
+      googleApiKey: googleApiKey || undefined,
+      googleCseId: googleCseId || undefined,
+    });
+    const label =
+      backend === "google" && googleApiKey && googleCseId
+        ? "Google CSE"
+        : "DuckDuckGo";
+    return { results, backend: label };
+  }
+
+  private async runDirectSearch(query: string): Promise<void> {
+    this.post({ type: "assistantStart" });
+    try {
+      const { results, backend } = await this.doWebSearch(query, 8);
+      const md = results.length
+        ? results
+            .map(
+              (r, i) =>
+                `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet.slice(
+                  0,
+                  300
+                )}`
+            )
+            .join("\n\n")
+        : "_(no results)_";
+      this.post({
+        type: "assistantToken",
+        text: `Search (${backend}) for \`${query}\`:\n\n${md}`,
+      });
+    } catch (e: any) {
+      this.post({
+        type: "assistantError",
+        text: `web_search failed: ${e?.message ?? e}`,
+      });
+      return;
+    }
+    this.post({ type: "assistantEnd" });
   }
 
   reveal() {
@@ -338,6 +452,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const cfg = vscode.workspace.getConfiguration("ollamaCoder");
     const endpoint = cfg.get<string>("endpoint", "http://localhost:11434");
+
+    // Slash command: '/search QUERY' (alias '/web', '/google') runs a
+    // web search directly and renders results inline. No LLM involved.
+    const slashQuery = parseSlashSearch(text);
+    if (slashQuery) {
+      this.post({ type: "userMessage", text });
+      await this.rememberCommand(text);
+      await this.runDirectSearch(slashQuery);
+      return;
+    }
     const model =
       modelOverride && modelOverride.trim()
         ? modelOverride
@@ -366,6 +490,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // @mention expansion
     const { text: cleaned, attachments } = await this.expandMentions(userContent);
     userContent = cleaned + attachments.join("");
+
+    // Web-search intent: prepend retrieved results as context so the LLM
+    // can ground its answer. Works without agent mode \u2014 plain RAG.
+    if (looksLikeWebSearchIntent(text)) {
+      try {
+        const { results, backend } = await this.doWebSearch(text, 5);
+        if (results.length) {
+          this.post({
+            type: "notice",
+            text: `Pulled ${results.length} web result(s) from ${backend} to ground the answer.`,
+          });
+          userContent =
+            `Use these web search results to answer:\n\n` +
+            formatSearchResults(text, backend, results) +
+            `\n\n---\n\nUser question:\n${userContent}`;
+        }
+      } catch (e: any) {
+        this.post({
+          type: "notice",
+          text: `(web_search failed: ${e?.message ?? e})`,
+        });
+      }
+    }
 
     // Auto-route file-write intents to the agent loop even if the user didn't
     // tick the agent checkbox. Without this, the model just replies with a code
@@ -654,13 +801,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </label>
       <label><input type="checkbox" id="ctx" checked /> include current file/selection</label>
       <label><input type="checkbox" id="agent" /> agent mode (can read/write workspace)</label>
+      <span id="search-backend" title="Active web_search backend" style="font-size:11px;opacity:0.75">Search: …</span>
       <span style="flex:1"></span>
       <button id="historyBtn" class="secondary" title="Show command history">☰ History</button>
       <button id="stop" class="secondary">Stop</button>
       <button id="clear" class="secondary">Clear</button>
       <button id="send">Send</button>
     </div>
-    <div id="hint">Tip: <code>@src/foo.ts</code> attaches a file. <code>@selection</code> attaches the editor selection. Hover a code block for apply actions.</div>
+    <div id="hint">Tip: <code>@src/foo.ts</code> attaches a file. <code>@selection</code> attaches the editor selection. <code>/search QUERY</code> runs a web search. Hover a code block for apply actions.</div>
   </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -967,6 +1115,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       cmdHistory = m.items || [];
       histCursor = -1;
       renderHistoryPanel();
+    }
+    else if (m.type === 'searchBackend'){
+      const el = document.getElementById('search-backend');
+      if (el) el.textContent = 'Search: ' + (m.label || '…');
     }
   });
 

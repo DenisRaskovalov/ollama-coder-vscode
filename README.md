@@ -1,7 +1,20 @@
-# Ollama Coder for VS Code
+# Ollama Coder
 
-A simple, fully-local VS Code coding assistant powered by [Ollama](https://ollama.com).
+A fully-local LLM coding assistant powered by [Ollama](https://ollama.com).
 Nothing leaves your machine.
+
+This repository ships **two sister plugins** that share the same ideas:
+
+| Editor | Source | Installer | Docs |
+| --- | --- | --- | --- |
+| **VS Code** | `src/` | `scripts/install-ubuntu.sh` | this README + [`DOCUMENTATION.md`](./DOCUMENTATION.md) |
+| **Vim / Neovim** | `vim/` | `vim/scripts/install-ubuntu.sh` | [`vim/README.md`](./vim/README.md) + `:help ollama-coder` |
+
+The rest of this README is about the VS Code extension.
+
+---
+
+## Ollama Coder for VS Code
 
 ## Features
 

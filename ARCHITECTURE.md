@@ -387,7 +387,27 @@ Nothing happens "elsewhere".
 
 ## 8. Status
 
-Last updated for **v1.4.3**.
+Last updated for **v1.4.4**.
+
+### Acceptance harness (v1.4.4)
+
+From this version on, the agent has **end-to-end scenario tests** in
+`test/agentE2E.test.js`. Each scenario:
+
+1. Creates an empty (or pre-populated) temp directory.
+2. Drives `runAgentLoop` from `src/agentLoop.ts` with a scripted Ollama
+   mock (`test/_scriptedOllama.js`) and a real fs-backed tool executor
+   (`test/_fsToolExecutor.js`).
+3. Asserts the directory the agent produced **compiles and runs**
+   under the user's actual toolchain (`python3`, `g++ + make`).
+
+This is the contract the user described: *“start with a directory, run
+a sequence of commands, then the produced directory could be compiled,
+run and checked.”* If a future refactor regresses any of those
+properties, the relevant scenario will fail loudly. Scenarios that
+need a toolchain (`python3` / `g++` / `make`) skip themselves cleanly
+when the binary isn't on `PATH`.
+
 
 ### Open-source ideas adopted
 

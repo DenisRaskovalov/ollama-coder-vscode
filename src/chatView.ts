@@ -547,6 +547,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                      color: var(--vscode-button-secondaryForeground); }
   label { font-size: 12px; opacity: 0.85; }
   #hint { font-size: 11px; opacity: 0.6; }
+  /* Custom model picker. We avoid <select> because VS Code webviews on Linux
+     sometimes render its option list with broken contrast (white-on-white),
+     so the user clicks and "sees nothing". A DOM dropdown uses theme vars. */
+  #model-picker { position: relative; display: inline-block; }
+  #modelBtn { background: var(--vscode-dropdown-background, var(--vscode-input-background));
+              color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+              border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+              padding: 2px 18px 2px 6px; font: inherit; font-size: 12px;
+              cursor: pointer; min-width: 120px; max-width: 240px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+              text-align: left; position: relative; }
+  #modelBtn::after { content: "\\25BE"; position: absolute; right: 6px; top: 2px; opacity: 0.7; }
+  #modelMenu { display: none; position: absolute; top: 100%; left: 0;
+               background: var(--vscode-dropdown-background, var(--vscode-editorWidget-background));
+               color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+               border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+               min-width: 220px; max-height: 320px; overflow-y: auto;
+               z-index: 1000;
+               box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+  #modelMenu.open { display: block; }
+  #modelMenu .opt { padding: 4px 10px; cursor: pointer; font-size: 12px;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                    color: var(--vscode-dropdown-foreground, var(--vscode-foreground)); }
+  #modelMenu .opt:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08)); }
+  #modelMenu .opt.selected { background: var(--vscode-list-activeSelectionBackground);
+                             color: var(--vscode-list-activeSelectionForeground); }
+  #modelMenu .opt.empty { opacity: 0.6; font-style: italic; cursor: default; }
   #history-panel { display: none; max-height: 180px; overflow-y: auto;
                    border-top: 1px solid var(--vscode-panel-border);
                    background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); }
@@ -580,7 +607,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <div id="row">
       <label style="display:flex;align-items:center;gap:4px">
         Model:
-        <select id="model" title="Model for the next query"><option value="">(loading…)</option></select>
+        <span id="model-picker">
+          <button id="modelBtn" type="button" title="Model for the next query">(loading…)</button>
+          <div id="modelMenu" role="listbox"></div>
+        </span>
         <button id="refreshModels" class="secondary" title="Refresh model list">↻</button>
       </label>
       <label><input type="checkbox" id="ctx" checked /> include current file/selection</label>
@@ -597,7 +627,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   const vscode = acquireVsCodeApi();
   const log = document.getElementById('log');
   const input = document.getElementById('input');
-  const modelSel = document.getElementById('model');
+  // Custom model picker state. We avoid <select> because its dropdown is
+  // sometimes invisible inside VS Code webviews (white-on-white contrast).
+  const modelBtn = document.getElementById('modelBtn');
+  const modelMenu = document.getElementById('modelMenu');
+  const modelSel = {
+    _value: '',
+    _opts: [],
+    get value() { return this._value; },
+    set value(v) {
+      this._value = v;
+      modelBtn.textContent = v || '(none)';
+      // Update selected highlight in the menu, if it's already populated.
+      modelMenu.querySelectorAll('.opt').forEach((el) => {
+        el.classList.toggle('selected', el.getAttribute('data-value') === v);
+      });
+    },
+    get options() {
+      // Tests inspect this. Return a live-ish snapshot.
+      return this._opts.slice();
+    },
+  };
+  modelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    modelMenu.classList.toggle('open');
+  });
+  // Close when clicking elsewhere or pressing Escape.
+  document.addEventListener('click', (e) => {
+    if (!modelMenu.contains(e.target) && e.target !== modelBtn) {
+      modelMenu.classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') modelMenu.classList.remove('open');
+  });
   const historyPanel = document.getElementById('history-panel');
   const historyList = document.getElementById('history-list');
   let current = null;       // body element for current assistant message
@@ -646,32 +709,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   };
 
   function populateModels(list, current, error){
-    modelSel.innerHTML = '';
+    modelMenu.innerHTML = '';
+    modelSel._opts = [];
+
+    function addItem(text, value, opts) {
+      const it = document.createElement('div');
+      it.className = 'opt' + (opts && opts.empty ? ' empty' : '');
+      if (value) it.setAttribute('data-value', value);
+      it.textContent = text;
+      if (!opts || !opts.empty) {
+        it.addEventListener('click', () => {
+          modelSel.value = value;
+          modelMenu.classList.remove('open');
+          vscode.postMessage({ type:'setModel', model: value });
+        });
+      }
+      modelMenu.appendChild(it);
+      modelSel._opts.push({ value: value || '', text });
+      return it;
+    }
+
     if (error) {
-      const o = document.createElement('option');
-      o.value = ''; o.textContent = '(error: ' + error.slice(0,40) + ')';
-      modelSel.appendChild(o);
+      modelBtn.textContent = '(error)';
+      addItem('(error) ' + String(error).slice(0, 80), '', { empty: true });
       return;
     }
     if (!list || list.length === 0) {
-      const o = document.createElement('option');
-      o.value = ''; o.textContent = '(no models — run: ollama pull …)';
-      modelSel.appendChild(o);
+      modelBtn.textContent = '(no models)';
+      addItem('(no models — run: ollama pull …)', '', { empty: true });
       return;
     }
-    // Make sure the currently-configured model is selectable even if not yet listed.
     if (current && !list.includes(current)) list = [current, ...list];
     for (const m of list) {
-      const o = document.createElement('option');
-      o.value = m; o.textContent = m;
-      if (m === current) o.selected = true;
-      modelSel.appendChild(o);
+      const el = addItem(m, m);
+      if (m === current) el.classList.add('selected');
     }
+    modelSel._value = current || '';
+    modelBtn.textContent = current || list[0] || '(none)';
   }
 
-  modelSel.addEventListener('change', ()=>{
-    vscode.postMessage({ type:'setModel', model: modelSel.value });
-  });
   document.getElementById('refreshModels').onclick = ()=>vscode.postMessage({type:'refreshModels'});
 
   function escapeHtml(s){return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
@@ -846,7 +922,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     else if (m.type === 'cleared'){ log.innerHTML=''; window.__codeBlocks={}; }
     else if (m.type === 'models'){ populateModels(m.models, m.current, m.error); }
     else if (m.type === 'currentModel'){
-      for (const o of modelSel.options) o.selected = (o.value === m.model);
+      modelSel.value = m.model || '';
     }
     else if (m.type === 'history'){
       cmdHistory = m.items || [];

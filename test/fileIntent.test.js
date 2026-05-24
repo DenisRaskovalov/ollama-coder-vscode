@@ -55,52 +55,79 @@ const ctor = new Function(
 // from the source and exercise it. This stays in sync because the
 // regexes are the *only* contract the rest of the code relies on.
 
-const intents = [
-  /\b(create|make|add|write|generate|scaffold|bootstrap|new)\b[^.?!\n]*\bfile\b/i,
-  /\b(add|insert|append|write|put)\b[^.?!\n]*\b(to|into|in)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
-  /\bsave\b[^.?!\n]*\b(to|into|as)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
-  /\bedit\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
-  /\b(modify|update|patch|refactor|fix)\b[^.?!\n]*\.[a-z0-9]{1,6}\b/i,
+// Import the actual compiled helpers so the test can't drift from the
+// implementation. Both functions are exported from chatView.ts.
+const { looksLikeFileWriteIntent: looksLike, inferLanguageExt } = require(chatViewPath);
+
+// --- file-write intent positives ---
+
+const POSITIVE = [
+  "add a new file with C++ Hello World",
+  "add vector class implementation to test.cpp",
+  "create a new file foo.py with a Fibonacci function",
+  "modify src/index.ts to export a helper",
+  "save the result to output.json",
+  // Reported regressions:
+  "write to a new file C++ Hello World problem",
+  "write a new file with C++ Hello World",
+  "make hello.cpp with hello world",
+  "new C++ Hello World file",
+  "new Python script that prints primes",
+  "create script using bash that lists pids",
+  "implement Vector class in vector.hpp",
 ];
-const looksLike = (s) => intents.some((re) => re.test(s));
+for (const s of POSITIVE) {
+  test(`detects intent: ${JSON.stringify(s)}`, () => {
+    assert.equal(looksLike(s), true, `expected positive match: ${s}`);
+  });
+}
 
-test("detects 'add a new file with C++ Hello World'", () => {
-  assert.equal(looksLike("add a new file with C++ Hello World"), true);
+const NEGATIVE = [
+  "what is a vector class in C++?",
+  "explain how Hello World works",
+  "why does my code segfault?",
+  "write some pseudocode for quicksort",
+  "can you describe the Visitor pattern?",
+];
+for (const s of NEGATIVE) {
+  test(`does NOT trigger: ${JSON.stringify(s)}`, () => {
+    assert.equal(looksLike(s), false, `expected negative: ${s}`);
+  });
+}
+
+// --- language inference ---
+
+test("inferLanguageExt picks C++ for 'C++ Hello World'", () => {
+  assert.deepEqual(inferLanguageExt("C++ Hello World"), {
+    name: "C++",
+    ext: ".cpp",
+  });
 });
 
-test("detects 'add vector class implementation to test.cpp'", () => {
-  assert.equal(
-    looksLike("add vector class implementation to test.cpp"),
-    true
-  );
+test("inferLanguageExt picks Python for 'python primes script'", () => {
+  assert.deepEqual(inferLanguageExt("python primes script"), {
+    name: "Python",
+    ext: ".py",
+  });
 });
 
-test("detects 'create a new file foo.py with a Fibonacci function'", () => {
-  assert.equal(
-    looksLike("create a new file foo.py with a Fibonacci function"),
-    true
-  );
+test("inferLanguageExt picks Rust for 'rust fizzbuzz'", () => {
+  assert.deepEqual(inferLanguageExt("rust fizzbuzz"), {
+    name: "Rust",
+    ext: ".rs",
+  });
 });
 
-test("detects 'modify src/index.ts to export a helper'", () => {
-  assert.equal(
-    looksLike("modify src/index.ts to export a helper"),
-    true
-  );
+test("inferLanguageExt returns undefined when no language is mentioned", () => {
+  assert.equal(inferLanguageExt("just a generic question"), undefined);
 });
 
-test("detects 'save the result to output.json'", () => {
-  assert.equal(looksLike("save the result to output.json"), true);
-});
-
-test("does NOT trigger on pure questions", () => {
-  assert.equal(looksLike("what is a vector class in C++?"), false);
-  assert.equal(looksLike("explain how Hello World works"), false);
-  assert.equal(looksLike("why does my code segfault?"), false);
-});
-
-test("does NOT trigger on chat without filename hints or 'file'", () => {
-  assert.equal(looksLike("write some pseudocode for quicksort"), false);
+test("inferLanguageExt does not pick plain C when C++ is mentioned", () => {
+  // Must not be confused by the 'C' in 'C++'.
+  assert.deepEqual(inferLanguageExt("C++ Hello World"), {
+    name: "C++",
+    ext: ".cpp",
+  });
 });
 
 // --- path tolerance tests via tools.js ---

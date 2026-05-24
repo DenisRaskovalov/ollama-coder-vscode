@@ -622,7 +622,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       d.title = t;
       const txt = document.createElement('span');
       txt.className = 'text';
-      txt.textContent = t.split('\n')[0];
+      txt.textContent = t.split('\\n')[0];
       const edit = document.createElement('button');
       edit.textContent = '✎ edit';
       edit.onclick = (ev) => { ev.stopPropagation(); input.value = t; input.focus(); historyPanel.classList.remove('open'); };
@@ -756,7 +756,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (e.key === 'ArrowUp') {
       // Only step into history if the cursor is on the first visual line.
       const before = input.value.slice(0, input.selectionStart || 0);
-      if (before.includes('\n')) return; // multi-line edit, leave native behaviour
+      if (before.includes('\\n')) return; // multi-line edit, leave native behaviour
       if (histCursor === -1) histDraft = input.value;
       if (histCursor + 1 < cmdHistory.length) {
         histCursor++;
@@ -768,7 +768,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     if (e.key === 'ArrowDown') {
       const after = input.value.slice(input.selectionEnd || 0);
-      if (after.includes('\n')) return;
+      if (after.includes('\\n')) return;
       if (histCursor > 0) {
         histCursor--;
         input.value = cmdHistory[histCursor];

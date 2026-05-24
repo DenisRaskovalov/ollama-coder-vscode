@@ -60,6 +60,40 @@ is already prepared in this repo.
 
 ## 3. Sanity-check the package locally
 
+### Shortcut: the all-in-one Ubuntu script
+
+`scripts/publish-ubuntu.sh` automates steps 3–5 (and step 4 publish/tag if
+you pass the right flags). Typical run:
+
+```sh
+./scripts/publish-ubuntu.sh                  # dry run: build + test + package only
+./scripts/publish-ubuntu.sh --bump patch     # 0.1.0 -> 0.1.1, then build & package
+VSCE_PAT=$(security find-generic-password -a $USER -s vsce-pat -w) \
+  ./scripts/publish-ubuntu.sh --bump patch --publish   # the full pipeline
+OVSX_TOKEN=$OVSX_TOKEN \
+  ./scripts/publish-ubuntu.sh --publish --ovsx          # also mirror to Open VSX
+```
+
+It:
+1. Refuses to run if Node < 18, publisher is still `"local"`, or the tree
+   is dirty / on the wrong branch (use `--allow-dirty` or `--branch X` to
+   override).
+2. Runs `npm test` — publish fails fast if any of the 128+ tests fail.
+3. Bumps the version (when `--bump patch|minor|major` is given) and
+   commits the change.
+4. Packages a `.vsix`, then **verifies its contents**: fails loudly if
+   `src/`, `test/`, `PUBLISHING.md`, or `*.ts` files leak in, and fails
+   if any required file is missing (README, CHANGELOG, LICENSE, icon,
+   compiled entry point).
+5. Publishes when `VSCE_PAT` is set or `--publish` is passed; optionally
+   mirrors to Open VSX when `OVSX_TOKEN` is set or `--ovsx` is passed.
+6. Tags `v<version>` and pushes to `origin`.
+
+Exit codes: `0` success, `10` prereq missing, `20` git-state wrong,
+`30` build/test failed, `40` package/publish failed.
+
+### Or manually
+
 ```sh
 npm install                # one-time
 npm test                   # compile + tsc --noEmit + unit tests

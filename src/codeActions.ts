@@ -70,13 +70,13 @@ const ACTIONS: Record<string, ActionSpec> = {
 export async function runAction(actionId: keyof typeof ACTIONS) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
-    vscode.window.showWarningMessage("Ollama Coder: no active editor.");
+    vscode.window.showWarningMessage("Ollama Free Coder: no active editor.");
     return;
   }
   const sel = editor.selection;
   const code = editor.document.getText(sel.isEmpty ? undefined : sel);
   if (!code.trim()) {
-    vscode.window.showWarningMessage("Ollama Coder: selection is empty.");
+    vscode.window.showWarningMessage("Ollama Free Coder: selection is empty.");
     return;
   }
   const action = ACTIONS[actionId];
@@ -118,7 +118,7 @@ export async function runAction(actionId: keyof typeof ACTIONS) {
         );
         const cleaned = stripFences(result).trim();
         if (!cleaned) {
-          vscode.window.showWarningMessage("Ollama Coder: empty response.");
+          vscode.window.showWarningMessage("Ollama Free Coder: empty response.");
           return;
         }
         if (action.replace) {
@@ -133,7 +133,7 @@ export async function runAction(actionId: keyof typeof ACTIONS) {
       } catch (e: any) {
         if (!String(e?.message).includes("aborted")) {
           vscode.window.showErrorMessage(
-            `Ollama Coder failed: ${e?.message ?? e}`
+            `Ollama Free Coder failed: ${e?.message ?? e}`
           );
         }
       }

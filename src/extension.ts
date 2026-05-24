@@ -68,7 +68,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   reg("ollamaCoder.addFileToChat", async () => {
     const ed = vscode.window.activeTextEditor;
     if (!ed) {
-      vscode.window.showWarningMessage("Ollama Coder: no active editor.");
+      vscode.window.showWarningMessage("Ollama Free Coder: no active editor.");
       return;
     }
     const rel = vscode.workspace.asRelativePath(ed.document.uri);
@@ -107,7 +107,7 @@ async function pickModel(key: "chatModel" | "completionModel") {
   });
   if (!pick) return;
   await cfg.update(key, pick, vscode.ConfigurationTarget.Global);
-  vscode.window.showInformationMessage(`Ollama Coder: ${key} → ${pick}`);
+  vscode.window.showInformationMessage(`Ollama Free Coder: ${key} → ${pick}`);
 }
 
 export function deactivate() {}

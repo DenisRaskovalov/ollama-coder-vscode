@@ -1,4 +1,4 @@
-# Publishing **Ollama Coder** to the VS Code Marketplace
+# Publishing **Ollama Free Coder** to the VS Code Marketplace
 
 This file is a runbook for the maintainer. The Marketplace requires a personal
 Microsoft account and a personal Azure DevOps token, so **only the publisher
@@ -98,13 +98,13 @@ Exit codes: `0` success, `10` prereq missing, `20` git-state wrong,
 npm install                # one-time
 npm test                   # compile + tsc --noEmit + unit tests
 npx @vscode/vsce ls         # list every file that will be published — make sure no secrets!
-npx @vscode/vsce package -o ollama-coder.vsix
+npx @vscode/vsce package -o ollama-free-coder.vsix
 ```
 
 Install the local `.vsix` once to smoke-test:
 
 ```sh
-code --install-extension ./ollama-coder.vsix --force
+code --install-extension ./ollama-free-coder.vsix --force
 ```
 
 Open the chat, try inline completion, switch models, and exercise an agent
@@ -132,15 +132,15 @@ Watch the status at:
 
 Once published, the extension page will be at:
 
-- <https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-coder>
+- <https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-free-coder>
 
 And users can install via:
 
 ```sh
-code --install-extension DenRaskovalov.ollama-coder
+code --install-extension DenRaskovalov.ollama-free-coder
 ```
 
-…or from VS Code → **Extensions** → search “Ollama Coder”.
+…or from VS Code → **Extensions** → search “Ollama Free Coder”.
 
 ---
 
@@ -159,7 +159,7 @@ code --install-extension DenRaskovalov.ollama-coder
 
 | Action | Command |
 | --- | --- |
-| Unpublish a bad version | `npx @vscode/vsce unpublish DenRaskovalov.ollama-coder@0.1.1` |
+| Unpublish a bad version | `npx @vscode/vsce unpublish DenRaskovalov.ollama-free-coder@0.1.1` |
 | Unlist the whole extension | <https://marketplace.visualstudio.com/manage/publishers/DenRaskovalov> → ellipsis → **Unlist** |
 | Rotate the PAT | Create a new token in Azure DevOps, replace `$VSCE_PAT`, run `vsce verify-pat` |
 
@@ -169,7 +169,7 @@ code --install-extension DenRaskovalov.ollama-coder
 
 ```sh
 npm i -g ovsx
-ovsx publish ollama-coder.vsix -p "$OVSX_TOKEN"
+ovsx publish ollama-free-coder.vsix -p "$OVSX_TOKEN"
 ```
 
 `OVSX_TOKEN` comes from <https://open-vsx.org/user-settings/tokens>.

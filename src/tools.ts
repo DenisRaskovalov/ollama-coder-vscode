@@ -352,7 +352,7 @@ async function writeFile(
   if (requireConfirm) {
     const verb = existed ? "Overwrite" : "Create";
     const pick = await vscode.window.showWarningMessage(
-      `Ollama Coder agent wants to ${verb.toLowerCase()} ${rel} (${content.length} chars).`,
+      `Ollama Free Coder agent wants to ${verb.toLowerCase()} ${rel} (${content.length} chars).`,
       { modal: false },
       verb,
       "Show diff first",
@@ -401,7 +401,7 @@ async function showDiff(
     "vscode.diff",
     left.uri,
     right.uri,
-    `Ollama Coder: ${label} (proposed)`
+    `Ollama Free Coder: ${label} (proposed)`
   );
 }
 

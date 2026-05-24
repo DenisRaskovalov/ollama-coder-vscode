@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build, validate, package, and (optionally) publish the Ollama Coder VS Code
+# Build, validate, package, and (optionally) publish the Ollama Free Coder VS Code
 # extension to the Visual Studio Marketplace from an Ubuntu host.
 #
 # Pipeline:
 #   1. Sanity checks  : Node >=18, npm, git clean tree, on the expected branch.
 #   2. Build & test   : npm install -> npm run typecheck -> npm test.
 #   3. Version bump   : optional, via 'vsce publish patch|minor|major' OR --bump.
-#   4. Package .vsix  : npx @vscode/vsce package -o ollama-coder-<version>.vsix.
+#   4. Package .vsix  : npx @vscode/vsce package -o ollama-free-coder-<version>.vsix.
 #   5. Verify package : lists files, fails if PUBLISHING.md / src/ / test/ leak.
 #   6. Publish        : if VSCE_PAT is set OR --publish flag passed, runs
 #                       'vsce publish'; otherwise just emits the next command.
@@ -156,7 +156,7 @@ fi
 # 4. Package .vsix
 # ----------------------------------------------------------------------------
 log "Step 4/8: package"
-VSIX="ollama-coder-$VERSION.vsix"
+VSIX="ollama-free-coder-$VERSION.vsix"
 rm -f ./*.vsix
 npx --yes @vscode/vsce package -o "$VSIX" || die "vsce package failed" 40
 log "produced $VSIX ($(stat -c '%s' "$VSIX" 2>/dev/null || stat -f '%z' "$VSIX") bytes)"

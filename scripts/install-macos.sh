@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build & install the Ollama Coder VS Code extension on macOS.
+# Build & install the Ollama Free Coder VS Code extension on macOS.
 #
 # What this does:
 #   1. Ensures Homebrew, Node.js (>=18), VS Code CLI, and Ollama are available.
@@ -158,25 +158,25 @@ log "Running tests"
 npm test
 
 log "Packaging .vsix"
-npx --yes @vscode/vsce package -o ollama-coder.vsix
+npx --yes @vscode/vsce package -o ollama-free-coder.vsix
 
 # -----------------------------------------------------------------------------
 # 6. Install
 # -----------------------------------------------------------------------------
 log "Installing extension into '$CODE_BIN'"
-"$CODE_BIN" --install-extension ./ollama-coder.vsix --force
+"$CODE_BIN" --install-extension ./ollama-free-coder.vsix --force
 
 log "Done!"
 cat <<EOF
 
 Next steps:
   1. Restart VS Code (or reload the window).
-  2. Open the 'Ollama Coder' view from the Activity Bar (robot icon).
+  2. Open the 'Ollama Free Coder' view from the Activity Bar (robot icon).
   3. Default models:
        chat        : $CHAT_MODEL
        completion  : $COMPLETION_MODEL
-     Override via Settings -> "Ollama Coder", or:
-       Cmd+Shift+P -> "Ollama Coder: Select Chat Model"
+     Override via Settings -> "Ollama Free Coder", or:
+       Cmd+Shift+P -> "Ollama Free Coder: Select Chat Model"
   4. Keybindings:
        Cmd+Alt+O   -> Open chat
        Ctrl+Alt+E  -> Explain selection

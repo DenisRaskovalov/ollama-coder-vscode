@@ -1,4 +1,4 @@
-# Build & install the Ollama Coder VS Code extension on Windows.
+# Build & install the Ollama Free Coder VS Code extension on Windows.
 #
 # What this does:
 #   1. Ensures Node.js (>=18), the VS Code CLI, and Ollama are available
@@ -168,14 +168,14 @@ Write-Log 'Running tests'
 if ($LASTEXITCODE -ne 0) { Die 'npm test failed' }
 
 Write-Log 'Packaging .vsix'
-& npx --yes @vscode/vsce package -o ollama-coder.vsix
+& npx --yes @vscode/vsce package -o ollama-free-coder.vsix
 if ($LASTEXITCODE -ne 0) { Die 'vsce package failed' }
 
 # -----------------------------------------------------------------------------
 # 5. Install
 # -----------------------------------------------------------------------------
 Write-Log "Installing extension into '$CODE_BIN'"
-& $CODE_BIN --install-extension .\ollama-coder.vsix --force
+& $CODE_BIN --install-extension .\ollama-free-coder.vsix --force
 if ($LASTEXITCODE -ne 0) { Die "$CODE_BIN install failed" }
 
 Write-Log 'Done!'
@@ -183,12 +183,12 @@ Write-Host @"
 
 Next steps:
   1. Restart VS Code (or reload the window).
-  2. Open the 'Ollama Coder' view from the Activity Bar (robot icon).
+  2. Open the 'Ollama Free Coder' view from the Activity Bar (robot icon).
   3. Default models:
        chat        : $CHAT_MODEL
        completion  : $COMPLETION_MODEL
-     Override via Settings -> 'Ollama Coder', or:
-       Ctrl+Shift+P -> 'Ollama Coder: Select Chat Model'
+     Override via Settings -> 'Ollama Free Coder', or:
+       Ctrl+Shift+P -> 'Ollama Free Coder: Select Chat Model'
   4. Keybindings:
        Ctrl+Alt+O  -> Open chat
        Ctrl+Alt+E  -> Explain selection

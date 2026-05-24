@@ -5,7 +5,7 @@ import * as path from "path";
 export async function insertAtCursor(text: string): Promise<void> {
   const ed = vscode.window.activeTextEditor;
   if (!ed) {
-    vscode.window.showWarningMessage("Ollama Coder: no active editor.");
+    vscode.window.showWarningMessage("Ollama Free Coder: no active editor.");
     return;
   }
   await ed.edit((eb) => eb.insert(ed.selection.active, text));
@@ -15,7 +15,7 @@ export async function insertAtCursor(text: string): Promise<void> {
 export async function replaceSelection(text: string): Promise<void> {
   const ed = vscode.window.activeTextEditor;
   if (!ed) {
-    vscode.window.showWarningMessage("Ollama Coder: no active editor.");
+    vscode.window.showWarningMessage("Ollama Free Coder: no active editor.");
     return;
   }
   const sel = ed.selection;
@@ -42,7 +42,7 @@ export async function saveToFile(
 ): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
-    vscode.window.showWarningMessage("Ollama Coder: no workspace open.");
+    vscode.window.showWarningMessage("Ollama Free Coder: no workspace open.");
     return;
   }
 
@@ -56,7 +56,7 @@ export async function saveToFile(
   const uri = vscode.Uri.joinPath(folder.uri, rel);
   const rootPath = folder.uri.fsPath + path.sep;
   if (uri.fsPath !== folder.uri.fsPath && !uri.fsPath.startsWith(rootPath)) {
-    vscode.window.showErrorMessage("Ollama Coder: path escapes the workspace.");
+    vscode.window.showErrorMessage("Ollama Free Coder: path escapes the workspace.");
     return;
   }
 
@@ -82,7 +82,7 @@ export async function saveToFile(
       "vscode.diff",
       left.uri,
       right.uri,
-      `Ollama Coder: ${rel} (proposed)`
+      `Ollama Free Coder: ${rel} (proposed)`
     );
     const ok = await vscode.window.showWarningMessage(
       `Overwrite ${rel}?`,
@@ -104,7 +104,7 @@ export async function saveToFile(
   const doc = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(doc, { preview: false });
   vscode.window.showInformationMessage(
-    `Ollama Coder: ${existed ? "updated" : "created"} ${rel}`
+    `Ollama Free Coder: ${existed ? "updated" : "created"} ${rel}`
   );
 }
 

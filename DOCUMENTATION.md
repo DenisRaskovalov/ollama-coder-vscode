@@ -1,4 +1,4 @@
-# Ollama Coder — Architecture & Reference
+# Ollama Free Coder — Architecture & Reference
 
 This document explains what the extension does, how it is structured, and what
 every script and source file is responsible for. It complements the user-facing
@@ -8,7 +8,7 @@ every script and source file is responsible for. It complements the user-facing
 
 ## 1. What the plugin is
 
-**Ollama Coder** is a fully-local VS Code coding assistant that talks to a
+**Ollama Free Coder** is a fully-local VS Code coding assistant that talks to a
 [Ollama](https://ollama.com) server running on the same machine. Nothing leaves
 your machine and no API keys are needed.
 
@@ -166,7 +166,7 @@ replies with `{ models, current, error }` from `listModels(endpoint)`
 
 ## 7. Code actions on selection
 
-Defined in `src/codeActions.ts`. Right-click in the editor → **Ollama Coder**
+Defined in `src/codeActions.ts`. Right-click in the editor → **Ollama Free Coder**
 submenu, or via the command palette.
 
 | Command | What it does | Result placement |
@@ -242,16 +242,16 @@ All under the `ollamaCoder.*` namespace.
 
 | Command ID | Title | Default key |
 | --- | --- | --- |
-| `ollamaCoder.openChat` | Ollama Coder: Open Chat | `Ctrl+Alt+O` (`Cmd+Alt+O` on macOS) |
-| `ollamaCoder.explainSelection` | Ollama Coder: Explain Selection | `Ctrl+Alt+E` |
-| `ollamaCoder.refactorSelection` | Ollama Coder: Refactor Selection | `Ctrl+Alt+R` |
-| `ollamaCoder.fixSelection` | Ollama Coder: Fix Selection | — |
-| `ollamaCoder.addDocstrings` | Ollama Coder: Add Docstrings/Comments | — |
-| `ollamaCoder.generateTests` | Ollama Coder: Generate Unit Tests | — |
-| `ollamaCoder.askAboutSelection` | Ollama Coder: Ask About Selection… | — |
-| `ollamaCoder.addFileToChat` | Ollama Coder: Add File/Selection to Chat | — |
-| `ollamaCoder.selectChatModel` | Ollama Coder: Select Chat Model | — |
-| `ollamaCoder.selectCompletionModel` | Ollama Coder: Select Completion Model | — |
+| `ollamaCoder.openChat` | Ollama Free Coder: Open Chat | `Ctrl+Alt+O` (`Cmd+Alt+O` on macOS) |
+| `ollamaCoder.explainSelection` | Ollama Free Coder: Explain Selection | `Ctrl+Alt+E` |
+| `ollamaCoder.refactorSelection` | Ollama Free Coder: Refactor Selection | `Ctrl+Alt+R` |
+| `ollamaCoder.fixSelection` | Ollama Free Coder: Fix Selection | — |
+| `ollamaCoder.addDocstrings` | Ollama Free Coder: Add Docstrings/Comments | — |
+| `ollamaCoder.generateTests` | Ollama Free Coder: Generate Unit Tests | — |
+| `ollamaCoder.askAboutSelection` | Ollama Free Coder: Ask About Selection… | — |
+| `ollamaCoder.addFileToChat` | Ollama Free Coder: Add File/Selection to Chat | — |
+| `ollamaCoder.selectChatModel` | Ollama Free Coder: Select Chat Model | — |
+| `ollamaCoder.selectCompletionModel` | Ollama Free Coder: Select Completion Model | — |
 
 ---
 
@@ -323,10 +323,10 @@ Debian-family systems. It is idempotent and safe to re-run.
 
 5. **Build**
    - `npm install` (no audit/fund), `npm run compile` (`tsc -p ./`),
-     `npx @vscode/vsce package` → `ollama-coder.vsix`.
+     `npx @vscode/vsce package` → `ollama-free-coder.vsix`.
 
 6. **Install into VS Code**
-   - `"$CODE_BIN" --install-extension ./ollama-coder.vsix --force`.
+   - `"$CODE_BIN" --install-extension ./ollama-free-coder.vsix --force`.
    - Prints next-step hints (open the chat, default keybindings, etc.).
 
 ### Environment variables

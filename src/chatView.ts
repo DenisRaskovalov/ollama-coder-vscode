@@ -5,13 +5,13 @@ import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 import { searchWeb, SearchResult } from "./web";
 
 const SYSTEM_BASIC =
-  "You are Ollama Coder, an expert pair-programmer running locally inside the user's VS Code. " +
+  "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
   "Answer concisely. Use fenced code blocks for code. " +
   "When you produce code intended for a specific file, ALWAYS put the path right after the language in the fence header, like ```ts src/foo.ts or ```cpp test.cpp. " +
   "The user can click 'Save' on a code block and the path you wrote will be used as the filename.";
 
 const SYSTEM_AGENT =
-  "You are Ollama Coder, an autonomous coding agent running locally in the user's VS Code. " +
+  "You are Ollama Free Coder, an autonomous coding agent running locally in the user's VS Code. " +
   "You have tools to read and modify the workspace. USE THEM.\n\n" +
   "Rules:\n" +
   "1. When the user asks you to create a NEW file, IMMEDIATELY call write_file with the path and full content. Do NOT first reply with the code in a chat message asking for confirmation \u2014 the user already gets a confirm dialog from the editor.\n" +

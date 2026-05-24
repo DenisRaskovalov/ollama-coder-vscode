@@ -1,4 +1,4 @@
-# Ollama Coder
+# Ollama Free Coder
 
 A fully-local LLM coding assistant powered by [Ollama](https://ollama.com).
 Nothing leaves your machine.
@@ -20,7 +20,7 @@ The rest of this README is about the VS Code extension.
 
 ---
 
-## Ollama Coder for VS Code
+## Ollama Free Coder for VS Code
 
 ## Features
 
@@ -66,7 +66,7 @@ The rest of this README is about the VS Code extension.
     "Show diff first" opens a side-by-side preview before applying).
   Uses Ollama's native tool calling — works well with `llama3.1:8b`,
   `qwen2.5:7b`, `qwen2.5-coder:7b`, and other tool-capable models.
-- **Code actions on selection** (right-click → *Ollama Coder*):
+- **Code actions on selection** (right-click → *Ollama Free Coder*):
   - Explain Selection
   - Refactor Selection (replaces selection)
   - Fix Selection (replaces selection)
@@ -131,8 +131,8 @@ CHAT_MODEL=qwen2.5-coder:7b-instruct ./scripts/install-ubuntu.sh
 ```bash
 npm install
 npm run compile
-npx vsce package -o ollama-coder.vsix
-code --install-extension ./ollama-coder.vsix --force
+npx vsce package -o ollama-free-coder.vsix
+code --install-extension ./ollama-free-coder.vsix --force
 ```
 
 ## Development

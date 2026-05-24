@@ -11,7 +11,8 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const EXPECTED_PUBLISHER = "DenRaskovalov";
-const EXTENSION_NAME = "ollama-coder";
+const EXTENSION_NAME = "ollama-free-coder";
+const EXTENSION_DISPLAY_NAME = "Ollama Free Coder";
 
 test(`package.json publisher is "${EXPECTED_PUBLISHER}"`, () => {
   const pkg = JSON.parse(
@@ -22,6 +23,43 @@ test(`package.json publisher is "${EXPECTED_PUBLISHER}"`, () => {
     EXPECTED_PUBLISHER,
     `publisher drifted: package.json says "${pkg.publisher}"`
   );
+});
+
+test(`package.json name is "${EXTENSION_NAME}"`, () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "package.json"), "utf8")
+  );
+  assert.equal(
+    pkg.name,
+    EXTENSION_NAME,
+    `extension name drifted: package.json says "${pkg.name}"`
+  );
+});
+
+test(`package.json displayName is "${EXTENSION_DISPLAY_NAME}"`, () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "package.json"), "utf8")
+  );
+  assert.equal(
+    pkg.displayName,
+    EXTENSION_DISPLAY_NAME,
+    `displayName drifted: package.json says "${pkg.displayName}"`
+  );
+});
+
+test(`every contributed command title starts with "${EXTENSION_DISPLAY_NAME}: "`, () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "package.json"), "utf8")
+  );
+  const cmds = pkg.contributes?.commands ?? [];
+  assert.ok(cmds.length > 0, "package.json must contribute commands");
+  for (const c of cmds) {
+    assert.ok(
+      typeof c.title === "string" &&
+        c.title.startsWith(`${EXTENSION_DISPLAY_NAME}: `),
+      `command title not under "${EXTENSION_DISPLAY_NAME}: ": ${c.title}`
+    );
+  }
 });
 
 test(`package.json publisher is NOT "local" (placeholder)`, () => {
@@ -93,4 +131,43 @@ test(`no stray references to old publisher ids in marketplace contexts`, () => {
       `package.json still has stale publisher: ${stale}`
     );
   }
+});
+
+test(`no stray references to the old extension name on the VS Code side`, () => {
+  // The Vim sister plugin (under vim/) is allowed to keep "Ollama Coder"
+  // \u2014 it's a separately published plugin. Only the VS Code-side files
+  // should have been renamed.
+  const vscodeFiles = [
+    "README.md",
+    "DOCUMENTATION.md",
+    "CHANGELOG.md",
+    "PUBLISHING.md",
+    "src/extension.ts",
+    "src/chatView.ts",
+    "src/codeActions.ts",
+    "src/apply.ts",
+    "src/tools.ts",
+    "scripts/install-ubuntu.sh",
+    "scripts/install-macos.sh",
+    "scripts/install-windows.ps1",
+    "scripts/publish-ubuntu.sh",
+  ];
+  for (const f of vscodeFiles) {
+    const src = fs.readFileSync(path.join(ROOT, f), "utf8");
+    assert.ok(
+      !/\bOllama Coder\b/.test(src),
+      `${f} still contains the old name "Ollama Coder"`
+    );
+  }
+});
+
+test(`Vim plugin keeps the 'Ollama Coder' name (separately published)`, () => {
+  const vimReadme = fs.readFileSync(
+    path.join(ROOT, "vim/README.md"),
+    "utf8"
+  );
+  assert.ok(
+    /Ollama Coder/.test(vimReadme),
+    "vim/README.md must keep 'Ollama Coder' \u2014 the Vim plugin is a separate sister artifact"
+  );
 });

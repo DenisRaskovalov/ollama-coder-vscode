@@ -26,7 +26,7 @@ is already prepared in this repo.
    **publisher**. Use the publisher ID that already lives in `package.json`:
 
    ```json
-   "publisher": "evilmucedin"
+   "publisher": "DenRaskovalov"
    ```
 
    If you choose a different publisher ID, update `package.json` (and the
@@ -128,16 +128,16 @@ and verifies. First-time publishes can take ~1–2 minutes to appear in search.
 
 Watch the status at:
 
-- <https://marketplace.visualstudio.com/manage/publishers/evilmucedin>
+- <https://marketplace.visualstudio.com/manage/publishers/DenRaskovalov>
 
 Once published, the extension page will be at:
 
-- <https://marketplace.visualstudio.com/items?itemName=evilmucedin.ollama-coder>
+- <https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-coder>
 
 And users can install via:
 
 ```sh
-code --install-extension evilmucedin.ollama-coder
+code --install-extension DenRaskovalov.ollama-coder
 ```
 
 …or from VS Code → **Extensions** → search “Ollama Coder”.
@@ -159,8 +159,8 @@ code --install-extension evilmucedin.ollama-coder
 
 | Action | Command |
 | --- | --- |
-| Unpublish a bad version | `npx @vscode/vsce unpublish evilmucedin.ollama-coder@0.1.1` |
-| Unlist the whole extension | <https://marketplace.visualstudio.com/manage/publishers/evilmucedin> → ellipsis → **Unlist** |
+| Unpublish a bad version | `npx @vscode/vsce unpublish DenRaskovalov.ollama-coder@0.1.1` |
+| Unlist the whole extension | <https://marketplace.visualstudio.com/manage/publishers/DenRaskovalov> → ellipsis → **Unlist** |
 | Rotate the PAT | Create a new token in Azure DevOps, replace `$VSCE_PAT`, run `vsce verify-pat` |
 
 ---

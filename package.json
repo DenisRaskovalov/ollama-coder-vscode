@@ -3,7 +3,7 @@
   "displayName": "Ollama Coder",
   "description": "Code with a local Ollama LLM: inline completion, chat sidebar with @mentions and apply buttons, agent mode (read/write workspace via tools), explain/refactor/fix/tests/docstrings on selection.",
   "version": "0.1.0",
-  "publisher": "evilmucedin",
+  "publisher": "DenRaskovalov",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
   "engines": {

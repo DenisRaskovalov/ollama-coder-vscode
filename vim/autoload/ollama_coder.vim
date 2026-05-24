@@ -439,7 +439,142 @@ let s:TOOL_SCHEMAS = [
       \     'parameters': { 'type': 'object',
       \       'properties': { 'path': { 'type': 'string' } },
       \       'required': ['path'] } } },
+      \ { 'type': 'function', 'function': {
+      \     'name': 'web_search',
+      \     'description': 'Search the public web (DuckDuckGo by default; Google CSE if g:ollama_coder_google_api_key + g:ollama_coder_google_cse_id are set). Returns top matches.',
+      \     'parameters': { 'type': 'object',
+      \       'properties': {
+      \         'query': { 'type': 'string' },
+      \         'limit': { 'type': 'number' } },
+      \       'required': ['query'] } } },
       \ ]
+
+let g:ollama_coder_search_backend  = get(g:, 'ollama_coder_search_backend',  'duckduckgo')
+let g:ollama_coder_google_api_key  = get(g:, 'ollama_coder_google_api_key',  '')
+let g:ollama_coder_google_cse_id   = get(g:, 'ollama_coder_google_cse_id',   '')
+
+function! s:tool_web_search(args) abort
+  let l:q = get(a:args, 'query', '')
+  if empty(l:q) | return "ERROR: web_search: 'query' is required" | endif
+  let l:limit = max([1, min([10, str2nr(string(get(a:args, 'limit', 5)))])])
+
+  if g:ollama_coder_search_backend ==# 'google'
+        \ && !empty(g:ollama_coder_google_api_key)
+        \ && !empty(g:ollama_coder_google_cse_id)
+    let l:url = printf(
+          \ 'https://customsearch.googleapis.com/customsearch/v1?key=%s&cx=%s&q=%s&num=%d',
+          \ g:ollama_coder_google_api_key,
+          \ g:ollama_coder_google_cse_id,
+          \ s:url_encode(l:q),
+          \ l:limit)
+    let l:out = system('curl -sf -m 15 -H "Accept: application/json" ' . shellescape(l:url))
+    if v:shell_error != 0
+      return 'ERROR: web_search HTTP failure (' . v:shell_error . ')'
+    endif
+    try
+      let l:j = json_decode(l:out)
+    catch
+      return 'ERROR: web_search invalid JSON from Google CSE'
+    endtry
+    if type(l:j) == type({}) && has_key(l:j, 'error')
+      return printf('ERROR: Google CSE %s: %s',
+            \ get(l:j.error, 'code', '?'),
+            \ get(l:j.error, 'message', 'unknown'))
+    endif
+    let l:items = get(l:j, 'items', [])
+    let l:results = []
+    for l:it in l:items[0 : l:limit - 1]
+      let l:title = get(l:it, 'title', '')
+      let l:link  = get(l:it, 'link', '')
+      let l:snip  = get(l:it, 'snippet', '')
+      if !empty(l:title) && !empty(l:link)
+        call add(l:results, printf("%d. %s\n   %s\n   %s", len(l:results) + 1, l:title, l:link, l:snip[0:240]))
+      endif
+    endfor
+    if empty(l:results) | return 'No web results for ' . string(l:q) . '.' | endif
+    return "Search (Google CSE) for \"" . l:q . "\":\n" . join(l:results, "\n")
+  endif
+
+  " DuckDuckGo fallback: lite/html endpoint, scrape result blocks.
+  let l:url = 'https://html.duckduckgo.com/html/?q=' . s:url_encode(l:q)
+  let l:headers = '-H ' . shellescape('User-Agent: Mozilla/5.0 ollama-coder/0.1')
+        \ . ' -H ' . shellescape('Accept: text/html')
+  let l:out = system('curl -sfL -m 15 ' . l:headers . ' ' . shellescape(l:url))
+  if v:shell_error != 0
+    return 'ERROR: web_search HTTP failure (' . v:shell_error . ')'
+  endif
+  let l:results = s:parse_ddg_html(l:out, l:limit)
+  if empty(l:results) | return 'No web results for ' . string(l:q) . '.' | endif
+  let l:lines = []
+  let l:i = 1
+  for l:r in l:results
+    call add(l:lines, printf("%d. %s\n   %s\n   %s", l:i, l:r.title, l:r.url, l:r.snippet[0:240]))
+    let l:i += 1
+  endfor
+  return "Search (DuckDuckGo) for \"" . l:q . "\":\n" . join(l:lines, "\n")
+endfunction
+
+function! s:url_encode(s) abort
+  let l:out = ''
+  for l:i in range(strlen(a:s))
+    let l:c = a:s[l:i]
+    if l:c =~# '[A-Za-z0-9._~-]'
+      let l:out .= l:c
+    else
+      let l:out .= printf('%%%02X', char2nr(l:c))
+    endif
+  endfor
+  return l:out
+endfunction
+
+function! s:parse_ddg_html(html, limit) abort
+  let l:results = []
+  let l:re = '\v\<a[^>]+class\="[^"]*result__a[^"]*"[^>]+href\="([^"]+)"[^>]*\>([^<]*)\</a\>.{-}\<a[^>]+class\="[^"]*result__snippet[^"]*"[^>]*\>(.{-})\</a\>'
+  let l:pos = 0
+  while len(l:results) < a:limit
+    let l:m = matchlist(a:html, l:re, l:pos)
+    if empty(l:m) | break | endif
+    let l:idx = match(a:html, l:re, l:pos)
+    if l:idx < 0 | break | endif
+    let l:href = s:html_decode(l:m[1])
+    let l:url = s:ddg_unwrap(l:href)
+    let l:title = trim(s:strip_tags(l:m[2]))
+    let l:snip = trim(s:strip_tags(l:m[3]))
+    if !empty(l:url) && !empty(l:title)
+      call add(l:results, { 'title': l:title, 'url': l:url, 'snippet': l:snip })
+    endif
+    let l:pos = l:idx + len(l:m[0])
+  endwhile
+  return l:results
+endfunction
+
+function! s:ddg_unwrap(href) abort
+  let l:s = a:href
+  if l:s =~# '^//' | let l:s = 'https:' . l:s | endif
+  let l:m = matchstr(l:s, '\vuddg\=\zs[^&]+')
+  if empty(l:m) | return l:s | endif
+  " URL-decode
+  let l:m = substitute(l:m, '+', ' ', 'g')
+  return substitute(l:m, '\v\%(\x\x)', '\=nr2char(str2nr(submatch(0)[1:], 16))', 'g')
+endfunction
+
+function! s:strip_tags(s) abort
+  return s:html_decode(substitute(a:s, '\v\<[^>]+\>', '', 'g'))
+endfunction
+
+function! s:html_decode(s) abort
+  let l:t = a:s
+  let l:t = substitute(l:t, '&amp;',  '\&', 'g')
+  let l:t = substitute(l:t, '&lt;',   '<',  'g')
+  let l:t = substitute(l:t, '&gt;',   '>',  'g')
+  let l:t = substitute(l:t, '&quot;', '"',  'g')
+  let l:t = substitute(l:t, '&#39;',  "'",  'g')
+  let l:t = substitute(l:t, '&nbsp;', ' ',  'g')
+  let l:t = substitute(l:t, '&mdash;', '\=nr2char(0x2014)', 'g')
+  let l:t = substitute(l:t, '&ndash;', '\=nr2char(0x2013)', 'g')
+  let l:t = substitute(l:t, '\v\&#(\d+);', '\=nr2char(str2nr(submatch(1)))', 'g')
+  return l:t
+endfunction
 
 let s:AGENT_SYSTEM =
       \   "You are an autonomous coding agent running locally in Vim. You have tools to read and write the user's workspace. USE THEM.\n"
@@ -553,6 +688,7 @@ function! s:exec_tool(name, args) abort
   if a:name ==# 'read_file'  | return s:tool_read_file(a:args)  | endif
   if a:name ==# 'list_files' | return s:tool_list_files(a:args) | endif
   if a:name ==# 'write_file' | return s:tool_write_file(a:args) | endif
+  if a:name ==# 'web_search' | return s:tool_web_search(a:args) | endif
   return 'ERROR: unknown tool ' . a:name
 endfunction
 

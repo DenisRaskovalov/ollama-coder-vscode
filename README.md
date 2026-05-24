@@ -48,6 +48,10 @@ The rest of this README is about the VS Code extension.
   tools to answer multi-step questions and apply edits:
   - `read_file`, `list_files`, `search_text` — read-only context gathering.
   - `get_open_editors` — see what's open and what's selected.
+  - `web_search` — search the public web. Default backend is **DuckDuckGo**
+    (free, no key, no signup). If you set `ollamaCoder.googleApiKey` and
+    `ollamaCoder.googleCseId`, the tool switches to Google Custom Search
+    JSON API (Google's free tier: 100 queries/day).
   - `write_file` — create / overwrite files (always shows a confirm dialog;
     "Show diff first" opens a side-by-side preview before applying).
   Uses Ollama's native tool calling — works well with `llama3.1:8b`,
@@ -84,6 +88,9 @@ The rest of this README is about the VS Code extension.
 | `ollamaCoder.temperature` | `0.2` | Sampling temperature |
 | `ollamaCoder.contextWindowChars` | `4000` | Max chars of file context sent to the model |
 | `ollamaCoder.agentMaxSteps` | `8` | Max tool-calling steps per agent turn |
+| `ollamaCoder.searchBackend` | `duckduckgo` | `duckduckgo` (free, no key) or `google` (requires the two keys below) |
+| `ollamaCoder.googleApiKey` | `""` | Optional Google API key for Custom Search JSON API (free 100/day) |
+| `ollamaCoder.googleCseId` | `""` | Optional Google Programmable Search Engine id |
 
 ## Quick install on Ubuntu (24.04 / 26.04)
 

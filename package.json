@@ -90,6 +90,22 @@
           "type": "number",
           "default": 8,
           "description": "Maximum number of tool-calling steps the agent may run per turn."
+        },
+        "ollamaCoder.searchBackend": {
+          "type": "string",
+          "enum": ["duckduckgo", "google"],
+          "default": "duckduckgo",
+          "description": "Backend for the agent's web_search tool. 'duckduckgo' is fully free, no key required. 'google' uses Custom Search JSON API (100 free queries/day) and requires googleApiKey + googleCseId."
+        },
+        "ollamaCoder.googleApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Google API key for Custom Search JSON API. Get one at https://console.cloud.google.com/apis/credentials. Free quota: 100 queries/day."
+        },
+        "ollamaCoder.googleCseId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Google Programmable Search Engine (CSE) id. Create one at https://programmablesearchengine.google.com/ and enable 'Search the entire web'."
         }
       }
     },

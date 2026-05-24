@@ -21,13 +21,34 @@ this repo (`/src`). Nothing leaves your machine; no API keys.
 - Streaming via `curl` + Vim's `job_start` / Neovim's `jobstart`, no Python
   or external runtime needed.
 
-## Install (Ubuntu)
+## Install
 
+### Ubuntu / Debian
 ```sh
 git clone https://github.com/evilmucedin/ollama-coder-vscode
 cd ollama-coder-vscode
 ./vim/scripts/install-ubuntu.sh
 ```
+
+### macOS
+```sh
+git clone https://github.com/evilmucedin/ollama-coder-vscode
+cd ollama-coder-vscode
+./vim/scripts/install-macos.sh
+```
+Uses Homebrew. If `vim` on your `$PATH` is the system `/usr/bin/vim`
+(which lacks `+job`), the installer will gracefully fall back to
+Neovim. Run `brew install vim` to get a modern Vim build.
+
+### Windows (PowerShell 5.1+ or 7+)
+```powershell
+git clone https://github.com/evilmucedin/ollama-coder-vscode
+cd ollama-coder-vscode
+pwsh -ExecutionPolicy Bypass -File .\vim\scripts\install-windows.ps1
+```
+Uses `winget`. Installs into `%USERPROFILE%\vimfiles\pack\ollama\start\ollama-coder\`
+and `%LOCALAPPDATA%\nvim-data\site\pack\ollama\start\ollama-coder\`.
+
 
 The installer:
 1. Ensures `curl`, `vim` (or `nvim`), and `ollama` are present.

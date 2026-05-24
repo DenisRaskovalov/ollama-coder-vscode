@@ -34,6 +34,12 @@ The rest of this README is about the VS Code extension.
   one-click "include current file/selection" toggle, and `@mentions`:
   - `@src/foo.ts` — attach a workspace file's contents to your question.
   - `@selection` — attach the current editor selection (or whole active file).
+- **Show-on-screen vs. write-to-file routing** — prompts like *“show me a
+  C++ Hello World”*, *“explain Vector class in C++”*, *“what is a class in
+  Python”* always stream into the chat panel. Prompts like *“add Vector
+  class implementation to test.cpp”* or *“write a new file with Python
+  fizzbuzz”* are auto-routed through agent mode and create the file (with
+  a confirm dialog). You can override either way by toggling **agent mode**.
 - **Apply code blocks** — hover any code block in chat for one-click
   *Insert at cursor*, *Replace selection*, *Save…* (with diff preview if the
   target file exists), and *Copy*. If the assistant emits a fence like

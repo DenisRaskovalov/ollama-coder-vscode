@@ -41,11 +41,37 @@ const FILE_WRITE_INTENT = [
   /\b(create|make|add|write|generate|new|touch|drop|put)\b\s+[\w./-]*\.[a-z0-9]{1,6}\b/i,
   // "new C++ Hello World file" / "C++ hello world as a file" / "new <lang> file"
   /\bnew\b[^.?!\n]*\b(file|program|script|module|class|header|test)\b/i,
-  /\b(file|program|script|module|class|header|test)\b[^.?!\n]*\b(in|using|with|for)\b\s+(c\+\+|cpp|c#|csharp|python|py|ruby|rust|go(?:lang)?|java(?:script)?|ts|typescript|js|kotlin|swift|bash|shell|sh|html|css)\b/i,
+  // "<verb> ... <noun> in/using/with/for <language>".
+  // The leading verb keeps innocent "what is a class in Python" / "explain
+  // Vector class in C++" out \u2014 those should be shown on screen, not
+  // written to disk.
+  /\b(create|make|add|write|generate|scaffold|bootstrap|implement|new|touch|drop|put)\b[^.?!\n]*\b(file|program|script|module|class|header|test)\b[^.?!\n]*\b(in|using|with|for)\b\s+(c\+\+|cpp|c#|csharp|python|py|ruby|rust|go(?:lang)?|java(?:script)?|ts|typescript|js|kotlin|swift|bash|shell|sh|html|css)\b/i,
 ];
 
 export function looksLikeFileWriteIntent(text: string): boolean {
   return FILE_WRITE_INTENT.some((re) => re.test(text));
+}
+
+/**
+ * Phrases that strongly imply the user wants the answer rendered on screen
+ * (in the chat panel), NOT written to a file. When one of these matches it
+ * overrides the file-write auto-routing: the model will stream into chat
+ * and no `write_file` call will be made unless the user explicitly toggled
+ * agent mode on.
+ */
+const SHOW_INTENT = [
+  // explicit ask-for-screen verbs
+  /^\s*(show|display|print|render|tell)\b/i,
+  /\b(show|display|print|render|tell)\s+me\b/i,
+  /\bgive\s+me\s+(an?\s+)?(example|snippet|sample|demo|illustration)\b/i,
+  // explainers / Q&A phrasings
+  /^\s*(what|how|why|when|where|which|who)\b/i,
+  /\b(explain|describe|summari[sz]e|outline|illustrate|demonstrate|walk\s+me\s+through|teach\s+me)\b/i,
+  /\b(in\s+(the\s+)?chat|on\s+(the\s+)?screen|inline|without\s+(creating|writing|saving)\s+(a\s+)?file|just\s+show)\b/i,
+];
+
+export function looksLikeShowIntent(text: string): boolean {
+  return SHOW_INTENT.some((re) => re.test(text));
 }
 
 /**
@@ -344,9 +370,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // Auto-route file-write intents to the agent loop even if the user didn't
     // tick the agent checkbox. Without this, the model just replies with a code
     // block and the requested file is never actually created on disk.
+    //
+    // BUT: if the prompt looks like the user wants the answer shown on screen
+    // ("show me ...", "what is ...", "explain ...", "give me an example ...",
+    // "... in chat", etc.), that overrides the file-write routing. The user
+    // can still force a file write by ticking the agent checkbox.
     let effectiveAgent = agent;
     const intent = looksLikeFileWriteIntent(text);
-    if (!agent && intent) {
+    const showIntent = looksLikeShowIntent(text);
+    if (!agent && intent && showIntent) {
+      this.post({
+        type: "notice",
+        text:
+          "Looks like you want this shown on screen \u2014 " +
+          "replying in chat (no files will be written). Tick \u201cagent mode\u201d to override.",
+      });
+    } else if (!agent && intent) {
       effectiveAgent = true;
       this.post({
         type: "notice",

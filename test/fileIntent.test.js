@@ -56,8 +56,12 @@ const ctor = new Function(
 // regexes are the *only* contract the rest of the code relies on.
 
 // Import the actual compiled helpers so the test can't drift from the
-// implementation. Both functions are exported from chatView.ts.
-const { looksLikeFileWriteIntent: looksLike, inferLanguageExt } = require(chatViewPath);
+// implementation. All three functions are exported from chatView.ts.
+const {
+  looksLikeFileWriteIntent: looksLike,
+  looksLikeShowIntent: looksShow,
+  inferLanguageExt,
+} = require(chatViewPath);
 
 // --- file-write intent positives ---
 
@@ -128,6 +132,91 @@ test("inferLanguageExt does not pick plain C when C++ is mentioned", () => {
     name: "C++",
     ext: ".cpp",
   });
+});
+
+// ---------------- show-on-screen intent ----------------
+
+const SHOW_POSITIVE = [
+  "show me a C++ Hello World",
+  "display the SHA256 of a string in Python",
+  "give me an example of a Vector class in C++",
+  "give me a snippet for fizzbuzz",
+  "what is a vector class in C++?",
+  "how do I implement memoization in Python",
+  "explain how Hello World works",
+  "describe the Visitor pattern",
+  "walk me through quicksort",
+  "teach me how move semantics work",
+  "summarize this function",
+  "just show C++ Hello World in chat",
+  "write fizzbuzz on screen, no file",
+];
+for (const s of SHOW_POSITIVE) {
+  test(`detects show intent: ${JSON.stringify(s)}`, () => {
+    assert.equal(looksShow(s), true, `expected show-intent positive: ${s}`);
+  });
+}
+
+const SHOW_NEGATIVE = [
+  "create a new file with C++ Hello World",
+  "add Vector class implementation to test.cpp",
+  "write a Python file fizzbuzz.py",
+  "save the result to output.json",
+];
+for (const s of SHOW_NEGATIVE) {
+  test(`does NOT trigger show intent: ${JSON.stringify(s)}`, () => {
+    assert.equal(looksShow(s), false, `expected show-intent negative: ${s}`);
+  });
+}
+
+// ---------------- the routing rule that uses both ----------------
+//
+// The chat view's effective rule is:
+//   if showIntent       -> stay in chat (no agent), even if intent also matches
+//   else if intent      -> route to agent
+//   else                -> stay in chat
+// Verify both signals together for the user's tricky cases.
+
+function route(s) {
+  if (looksShow(s)) return "chat";
+  if (looksLike(s)) return "agent";
+  return "chat";
+}
+
+test("'show me a C++ Hello World' -> chat (was wrongly routed to agent before)", () => {
+  assert.equal(route("show me a C++ Hello World"), "chat");
+});
+
+test("'explain Vector class in C++' -> chat (was a regex false-positive)", () => {
+  assert.equal(route("explain Vector class in C++"), "chat");
+});
+
+test("'what is a class in Python' -> chat", () => {
+  assert.equal(route("what is a class in Python"), "chat");
+});
+
+test("'write to a new file C++ Hello World program' -> agent (regression)", () => {
+  assert.equal(
+    route("write to a new file C++ Hello World program"),
+    "agent"
+  );
+});
+
+test("'add Vector class implementation to test.cpp' -> agent (regression)", () => {
+  assert.equal(
+    route("add Vector class implementation to test.cpp"),
+    "agent"
+  );
+});
+
+test("'make a Hello World program in C++' -> chat (intent regex tightened)", () => {
+  // Before this PR, this matched the noun+language pattern and silently
+  // got routed to agent. The user expectation is chat.
+  assert.equal(route("make a Hello World program in C++"), "chat");
+});
+
+test("'just show C++ Hello World in chat' -> chat (explicit override)", () => {
+  assert.equal(route("just show C++ Hello World in chat"), "chat");
 });
 
 // --- path tolerance tests via tools.js ---

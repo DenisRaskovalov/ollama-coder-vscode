@@ -2,7 +2,7 @@
   "name": "ollama-free-coder",
   "displayName": "Ollama Free Coder",
   "description": "Code with a local Ollama LLM: inline completion, chat sidebar with @mentions and apply buttons, agent mode (read/write workspace via tools), explain/refactor/fix/tests/docstrings on selection.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "publisher": "DenRaskovalov",
   "license": "Apache-2.0",
   "icon": "media/icon.png",

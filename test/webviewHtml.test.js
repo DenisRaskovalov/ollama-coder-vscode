@@ -63,6 +63,27 @@ test("embedded webview script parses as valid JavaScript", () => {
   }
 });
 
+test("model picker is rendered as a DOM dropdown, not a native <select>", () => {
+  // VS Code webviews on some platforms render <select> option lists with
+  // broken contrast (white-on-white), so the user clicks and sees nothing.
+  // We use a custom DOM dropdown instead. Guard against an accidental
+  // regression by asserting no <select id="model"> exists and that the
+  // custom #modelBtn + #modelMenu pair is present.
+  const html = generateHtml();
+  assert.ok(
+    !/<select[^>]+id="model"/i.test(html),
+    "chat input still uses a native <select id='model'> \u2014 must be a custom DOM dropdown"
+  );
+  assert.ok(/id="modelBtn"/.test(html), "missing custom #modelBtn");
+  assert.ok(/id="modelMenu"/.test(html), "missing custom #modelMenu");
+  // The menu must be styled with VS Code theme variables so it inherits
+  // dropdown contrast correctly across themes.
+  assert.ok(
+    /#modelMenu[\s\S]*--vscode-dropdown-(background|foreground)/.test(html),
+    "#modelMenu must use --vscode-dropdown-* theme variables"
+  );
+});
+
 test("key webview entry points are present in the script", () => {
   // These messages and handlers were broken by the unescaped-newline bug:
   // when the script fails to parse, none of them are wired up and the UI

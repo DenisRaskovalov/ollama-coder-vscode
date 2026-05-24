@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { spawn } from "child_process";
 import { searchWeb } from "./web";
 
 /**
@@ -165,6 +166,29 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   {
     type: "function",
     function: {
+      name: "run_command",
+      description:
+        "Run a shell command in the workspace root. The user sees a confirm dialog with the exact command before it runs. Returns combined stdout+stderr (up to 16KB) plus the exit code. Use sparingly; prefer the file-editing tools where possible. Disabled by default; enable with the ollamaCoder.enableRunCommand setting.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description:
+              "The command line to execute via /bin/sh -c (POSIX) or cmd /c (Windows). E.g. 'npm test', 'cargo build --release'.",
+          },
+          cwd: {
+            type: "string",
+            description: "Optional workspace-relative working directory. Defaults to the workspace root.",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "web_search",
       description:
         "Search the public web for up-to-date information. Returns the top matches as 'title | url | snippet' lines. Use this for facts the model might not know, package names/versions, error messages, API docs. Default backend is DuckDuckGo (free, no key). If the user has configured Google Custom Search keys, Google is used instead.",
@@ -215,6 +239,11 @@ export async function executeTool(
         return await runWebSearch(
           String(call.arguments.query ?? ""),
           Number(call.arguments.limit ?? 5)
+        );
+      case "run_command":
+        return await runShellCommand(
+          String(call.arguments.command ?? ""),
+          call.arguments.cwd ? String(call.arguments.cwd) : undefined
         );
       default:
         return `ERROR: unknown tool '${call.name}'`;
@@ -416,6 +445,101 @@ function guessLang(p: string): string {
     sh: "shellscript", html: "html", css: "css",
   };
   return map[ext] ?? "plaintext";
+}
+
+async function runShellCommand(
+  command: string,
+  cwdRel: string | undefined
+): Promise<string> {
+  if (!command.trim()) return "ERROR: run_command: 'command' is required";
+
+  const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+  if (!cfg.get<boolean>("enableRunCommand", false)) {
+    return (
+      "ERROR: run_command is disabled by default. Enable it in Settings -> " +
+      "'Ollama Free Coder: Enable Run Command' if you trust the agent to " +
+      "execute shell commands (each one still requires user confirmation)."
+    );
+  }
+
+  const root = workspaceRoot();
+  let cwd = root.fsPath;
+  if (cwdRel) {
+    try {
+      cwd = resolveInsideWorkspace(cwdRel).fsPath;
+    } catch (e: any) {
+      return `ERROR: ${e.message}`;
+    }
+  }
+
+  // Confirmation is REQUIRED. The model cannot bypass this.
+  const preview = command.length > 200 ? command.slice(0, 197) + "..." : command;
+  const pick = await vscode.window.showWarningMessage(
+    `Ollama Free Coder agent wants to run:\n\n  ${preview}\n\nin ${vscode.workspace.asRelativePath(cwd) || "."}`,
+    { modal: true },
+    "Run",
+    "Reject"
+  );
+  if (pick !== "Run") return `User rejected the command: ${preview}`;
+
+  const timeoutMs = cfg.get<number>("runCommandTimeoutMs", 30000);
+  const isWin = process.platform === "win32";
+  const shell = isWin ? "cmd.exe" : "/bin/sh";
+  const shellArgs = isWin ? ["/c", command] : ["-c", command];
+
+  return await new Promise<string>((resolve) => {
+    const child = spawn(shell, shellArgs, { cwd, env: process.env });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    const MAX = 16 * 1024;
+    let killed = false;
+
+    const t = setTimeout(() => {
+      killed = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }, timeoutMs);
+
+    const onData = (b: Buffer) => {
+      if (bytes >= MAX) return;
+      const room = MAX - bytes;
+      if (b.length <= room) {
+        chunks.push(b);
+        bytes += b.length;
+      } else {
+        chunks.push(b.subarray(0, room));
+        bytes = MAX;
+      }
+    };
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+
+    child.on("error", (e) => {
+      clearTimeout(t);
+      resolve(`ERROR: failed to spawn shell: ${e.message}`);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(t);
+      const body = Buffer.concat(chunks).toString("utf8");
+      const trailer = bytes >= MAX ? "\n... [truncated to 16KB]" : "";
+      if (killed) {
+        resolve(
+          `command killed after ${timeoutMs}ms timeout. Output so far:\n${body}${trailer}`
+        );
+        return;
+      }
+      const tag =
+        code === 0
+          ? "exit 0"
+          : signal
+          ? `signal ${signal}`
+          : `exit ${code ?? "?"}`;
+      resolve(`Command finished (${tag}). Output:\n${body}${trailer}`);
+    });
+  });
 }
 
 async function runWebSearch(query: string, limit: number): Promise<string> {

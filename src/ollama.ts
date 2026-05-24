@@ -33,6 +33,11 @@ export interface ChatOptions {
   numPredict?: number;
   /** Tool/function-calling schemas. When provided, the response is non-streaming. */
   tools?: any[];
+  /**
+   * Force structured output. Set to 'json' to make Ollama return strict JSON
+   * (used by the LLM router). Always non-streaming.
+   */
+  format?: "json";
   signal?: AbortSignal;
 }
 
@@ -174,6 +179,7 @@ export async function chatFull(
 ): Promise<ChatResult> {
   const url = new URL("/api/chat", opts.endpoint);
   const useTools = !!(opts.tools && opts.tools.length);
+  const useJson = opts.format === "json";
   const body: any = {
     model: opts.model,
     // Convert our wire-friendly ChatMessage[] to Ollama's expected shape.
@@ -183,13 +189,14 @@ export async function chatFull(
       if (m.tool_name) o.name = m.tool_name;
       return o;
     }),
-    stream: !useTools,
+    stream: !useTools && !useJson,
     options: {
       temperature: opts.temperature ?? 0.3,
       num_predict: opts.numPredict ?? 1024,
     },
   };
   if (useTools) body.tools = opts.tools;
+  if (useJson) body.format = "json";
 
   let out = "";
   let toolCalls: Array<{ name: string; arguments: Record<string, any> }> = [];

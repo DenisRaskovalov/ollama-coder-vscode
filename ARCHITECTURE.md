@@ -387,8 +387,21 @@ Nothing happens "elsewhere".
 
 ## 8. Status
 
-This paper describes architecture **as of v1.4.0** with one forward-looking
-section (4.3–4.5) describing the planned LLM router migration. The router
-is not implemented yet; the regex classifiers documented in section 2.2
-are still authoritative and unit-tested. When the router ships, this
-section will be moved to the "as-is" half of the document.
+Last updated for **v1.4.2**.
+
+| Migration step (§4.5) | State |
+| --- | --- |
+| 4a. Introduce `src/router.ts` behind `ollamaCoder.useLlmRouter` | **shipped in v1.4.2** — schema-validated `RoutePlan`, `chatView` calls `routeWithModel` when the flag is on; falls back to regex on failure or when off |
+| 4b. Shadow mode | **shipped in v1.4.2** — set `ollamaCoder.shadowLlmRouter: true` to log every router decision in chat without acting on it |
+| 4c. Swap the default | **not yet** |
+| 4d. Delete the regex classifiers | **not yet** |
+
+The regex classifiers in §2.2 remain authoritative by default in v1.4.2.
+Users who turn `useLlmRouter` on get the LLM-driven pipeline today.
+
+Beyond the migration plan, v1.4.2 also adds the **`run_command` tool**
+(§2.3 “Execution phase”), which lets the agent ask to run a shell command.
+It is disabled by default (`ollamaCoder.enableRunCommand: false`) and
+every invocation requires a per-call modal confirm. The four safety
+guards (feature flag, workspace-sandboxed cwd, modal confirm, hard
+kill-on-timeout) are pinned by `test/runCommandTool.test.js`.

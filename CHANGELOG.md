@@ -5,6 +5,26 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] — unreleased
+
+### Added
+- **LLM router** (ARCHITECTURE.md §4.3, step 4a). New `src/router.ts` calls
+  a small fast model with `format: 'json'` and returns a structured
+  `RoutePlan` (`kind`, `target_path`, `rephrased`, `reason`). Off by
+  default; opt in via `ollamaCoder.useLlmRouter` for authoritative
+  routing or `ollamaCoder.shadowLlmRouter` for shadow-mode logging.
+  `ollamaCoder.routerModel` lets you override which model handles
+  routing (defaults to the completion model). Schema-validated; the
+  router cannot make the plugin do anything outside the allowed kinds.
+- **`run_command` tool** for the agent. Runs a shell command in the
+  workspace root with a modal confirm dialog (model cannot bypass it),
+  a kill-after-timeout (`ollamaCoder.runCommandTimeoutMs`, default 30s),
+  and a 16KB output cap. Disabled by default; flip
+  `ollamaCoder.enableRunCommand` to allow it. Each invocation still
+  requires a per-call user click.
+- `ollama.chatFull` learned `format: 'json'` for forced-structured
+  output (used by the router; available for any caller).
+
 ## [1.4.1] — unreleased
 
 ### Added

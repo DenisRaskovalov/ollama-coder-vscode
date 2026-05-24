@@ -40,6 +40,16 @@ The rest of this README is about the VS Code extension.
   class implementation to test.cpp”* or *“write a new file with Python
   fizzbuzz”* are auto-routed through agent mode and create the file (with
   a confirm dialog). You can override either way by toggling **agent mode**.
+- **Web search built in** — three ways to use it:
+  1. Type `/search QUERY` (or `/web`, `/google`) in the chat input to run a
+     web search directly and render the top hits inline. No LLM involved.
+  2. Prompts with a web-search intent (*"google the latest TypeScript"*,
+     *"what's new in Rust 1.85"*, *"search the web for free SVG icons"*)
+     are auto-grounded: results are fetched and prepended as context
+     before the LLM answers.
+  3. The agent can call `web_search` itself in agent mode.
+  A small `Search: DuckDuckGo` (or `Google`) label in the chat input shows
+  which backend is active.
 - **Apply code blocks** — hover any code block in chat for one-click
   *Insert at cursor*, *Replace selection*, *Save…* (with diff preview if the
   target file exists), and *Copy*. If the assistant emits a fence like

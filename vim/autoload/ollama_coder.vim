@@ -804,5 +804,15 @@ function! ollama_coder#looks_like_show_intent(text) abort
   return 0
 endfunction
 
+" Direct web search command. Runs the same tool path the agent would use,
+" then dumps the formatted results into the chat buffer (no LLM involved).
+function! ollama_coder#web_search_show(query) abort
+  call s:chat_buf_ensure()
+  call s:chat_append(['', '## /search ' . a:query, ''])
+  let l:result = s:tool_web_search({ 'query': a:query, 'limit': 8 })
+  call s:chat_append(split(l:result, "\n"))
+  call s:chat_append([''])
+endfunction
+
 let &cpoptions = s:save_cpo
 unlet s:save_cpo

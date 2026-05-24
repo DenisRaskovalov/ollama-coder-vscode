@@ -49,6 +49,7 @@ command! OllamaStop                       call ollama_coder#stop()
 command! OllamaHistory                    call ollama_coder#history_pick()
 command! -nargs=+ OllamaWrite             call ollama_coder#agent_write(<q-args>)
 command! -nargs=+ OllamaSend              call ollama_coder#chat_send(<q-args>)
+command! -nargs=+ OllamaSearch            call ollama_coder#web_search_show(<q-args>)
 
 " -- default keymaps (set g:ollama_coder_default_maps = 0 to disable) --
 if g:ollama_coder_default_maps

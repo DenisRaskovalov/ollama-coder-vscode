@@ -650,5 +650,23 @@ function! ollama_coder#history_pick() abort
   endif
 endfunction
 
+" ---------------- intent helpers (mirror the VS Code regex set) ----------------
+
+let s:SHOW_INTENT = [
+      \ '\v^\s*(show|display|print|render|tell)>',
+      \ '\v<(show|display|print|render|tell)\s+me>',
+      \ '\v<give\s+me\s+(an?\s+)?(example|snippet|sample|demo|illustration)>',
+      \ '\v^\s*(what|how|why|when|where|which|who)>',
+      \ '\v<(explain|describe|summari[sz]e|outline|illustrate|demonstrate|walk\s+me\s+through|teach\s+me)>',
+      \ '\v<(in\s+(the\s+)?chat|on\s+(the\s+)?screen|inline|without\s+(creating|writing|saving)\s+(a\s+)?file|just\s+show)>',
+      \ ]
+
+function! ollama_coder#looks_like_show_intent(text) abort
+  for l:re in s:SHOW_INTENT
+    if a:text =~? l:re | return 1 | endif
+  endfor
+  return 0
+endfunction
+
 let &cpoptions = s:save_cpo
 unlet s:save_cpo

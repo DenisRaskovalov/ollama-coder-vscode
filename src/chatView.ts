@@ -760,6 +760,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   #modelMenu .opt.selected { background: var(--vscode-list-activeSelectionBackground);
                              color: var(--vscode-list-activeSelectionForeground); }
   #modelMenu .opt.empty { opacity: 0.6; font-style: italic; cursor: default; }
+  /* Keyboard navigation highlight (separate from .selected so users can see
+     where the arrow keys are pointing before they commit with Enter). */
+  #modelMenu .opt.active { outline: 1px solid var(--vscode-focusBorder, #007acc);
+                          outline-offset: -1px; }
   #history-panel { display: none; max-height: 180px; overflow-y: auto;
                    border-top: 1px solid var(--vscode-panel-border);
                    background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); }
@@ -835,18 +839,120 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return this._opts.slice();
     },
   };
+
+  // Currently keyboard-highlighted option (only valid while menu is open).
+  let modelActiveIdx = -1;
+  function getOptionEls() {
+    return Array.from(modelMenu.querySelectorAll('.opt:not(.empty)'));
+  }
+  function setModelActive(idx) {
+    const opts = getOptionEls();
+    if (!opts.length) { modelActiveIdx = -1; return; }
+    if (idx < 0) idx = 0;
+    if (idx >= opts.length) idx = opts.length - 1;
+    modelActiveIdx = idx;
+    opts.forEach((el, i) => el.classList.toggle('active', i === idx));
+    const el = opts[idx];
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }
+  function openModelMenu() {
+    modelMenu.classList.add('open');
+    const opts = getOptionEls();
+    // Start the highlight on the currently-selected model if any, else 0.
+    let start = opts.findIndex((el) => el.classList.contains('selected'));
+    if (start < 0) start = 0;
+    setModelActive(start);
+  }
+  function closeModelMenu() {
+    modelMenu.classList.remove('open');
+    modelActiveIdx = -1;
+    getOptionEls().forEach((el) => el.classList.remove('active'));
+  }
+  function commitModelActive() {
+    const opts = getOptionEls();
+    const el = opts[modelActiveIdx];
+    if (!el) { closeModelMenu(); return; }
+    const val = el.getAttribute('data-value') || '';
+    if (val) {
+      modelSel.value = val;
+      vscode.postMessage({ type: 'setModel', model: val });
+    }
+    closeModelMenu();
+    modelBtn.focus();
+  }
+
   modelBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    modelMenu.classList.toggle('open');
+    if (modelMenu.classList.contains('open')) closeModelMenu();
+    else openModelMenu();
   });
-  // Close when clicking elsewhere or pressing Escape.
+
+  // Keyboard navigation. Lives on modelBtn so it never fires while the
+  // textarea is focused (the textarea has its OWN ↑/↓ handler for command
+  // history \u2014 keeping them on separate focus targets means they
+  // don't collide).
+  modelBtn.addEventListener('keydown', (e) => {
+    const isOpen = modelMenu.classList.contains('open');
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (!isOpen) { openModelMenu(); return; }
+        setModelActive(modelActiveIdx + 1);
+        return;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (!isOpen) { openModelMenu(); setModelActive(getOptionEls().length - 1); return; }
+        setModelActive(modelActiveIdx - 1);
+        return;
+      case 'PageDown':
+        e.preventDefault();
+        if (!isOpen) openModelMenu();
+        setModelActive(modelActiveIdx + 5);
+        return;
+      case 'PageUp':
+        e.preventDefault();
+        if (!isOpen) openModelMenu();
+        setModelActive(modelActiveIdx - 5);
+        return;
+      case 'Home':
+        if (!isOpen) return;
+        e.preventDefault();
+        setModelActive(0);
+        return;
+      case 'End':
+        if (!isOpen) return;
+        e.preventDefault();
+        setModelActive(getOptionEls().length - 1);
+        return;
+      case 'Enter':
+      case ' ':
+        if (!isOpen) { e.preventDefault(); openModelMenu(); return; }
+        e.preventDefault();
+        commitModelActive();
+        return;
+      case 'Escape':
+        if (!isOpen) return;
+        e.preventDefault();
+        closeModelMenu();
+        return;
+      case 'Tab':
+        if (isOpen) closeModelMenu(); // don't trap focus
+        return;
+    }
+  });
+
+  // Close when clicking elsewhere or pressing Escape from anywhere.
   document.addEventListener('click', (e) => {
     if (!modelMenu.contains(e.target) && e.target !== modelBtn) {
-      modelMenu.classList.remove('open');
+      closeModelMenu();
     }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') modelMenu.classList.remove('open');
+    if (e.key === 'Escape' && modelMenu.classList.contains('open')) {
+      closeModelMenu();
+    }
   });
   const historyPanel = document.getElementById('history-panel');
   const historyList = document.getElementById('history-list');

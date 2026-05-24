@@ -30,6 +30,11 @@ The rest of this README is about the VS Code extension.
   chat input to walk through past commands shell-style, click **History** for
   a list view, or hover any past user message in the chat log for one-click
   *resend* and *edit*.
+- **Keyboard-driven model picker** — click the **Model** button (or focus it
+  with Tab) and use ↑/↓ to cycle models, **Home/End** to jump to first/last,
+  **PageUp/PageDown** to skip 5, **Enter** to select, **Esc** to cancel.
+  Mouse still works. The textarea’s own ↑/↓ history walk is independent —
+  the keys never collide because they live on different focus targets.
 - **Chat sidebar** (Activity Bar → robot icon) with streaming responses, a
   one-click "include current file/selection" toggle, and `@mentions`:
   - `@src/foo.ts` — attach a workspace file's contents to your question.

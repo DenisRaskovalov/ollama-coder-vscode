@@ -5,6 +5,54 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — unreleased
+
+First version with the full feature set described below. Bumped from the
+0.1.x pre-release line to reflect that. From this version onwards every
+shipped PR bumps the package version (at least the patch component).
+
+### Added since the pre-release line
+- Auto-detect `chat` and `completion` models from system RAM
+  (`scripts/pick-models.sh` / `.ps1`, 5-tier table, override via
+  `CHAT_MODEL` / `COMPLETION_MODEL` env vars).
+- Web search built into the chat: `/search`, `/web`, `/google` slash
+  commands; auto-RAG on prompts with web intent; visible backend label
+  (`Search: DuckDuckGo` / `Google`); DuckDuckGo by default, Google CSE
+  opt-in via `googleApiKey` + `googleCseId`.
+- Full keyboard navigation in the model picker (Up/Down/Home/End/
+  PageUp/PageDown/Enter/Escape).
+- Show-on-screen intent classifier that overrides the file-write
+  auto-routing for `show me …` / `what is …` / `explain …` / etc.
+- macOS and Windows installers for both the VS Code extension and the
+  Vim/Neovim sister plugin, with the shared env-var contract.
+- One-command `scripts/publish-ubuntu.sh` (build → test → package →
+  verify → publish → tag), idempotent across re-runs.
+- Vim/Neovim sister plugin under `vim/` (commands `:OllamaChat`,
+  `:OllamaSend`, `:OllamaWrite`, `:OllamaSearch`, code actions,
+  history, model picker, agent loop).
+- Test suite grew to 186+ cases with explicit regression guards for
+  every reported bug.
+
+### Changed
+- Marketplace publisher: `local` → `DenRaskovalov`.
+- Marketplace name: `ollama-coder` / “Ollama Coder” → `ollama-free-coder` /
+  “Ollama Free Coder”. Vim sister plugin keeps the “Ollama Coder”
+  name on purpose.
+- Model picker is a custom DOM widget instead of `<select>` (native
+  `<select>` rendered as invisible text in some VS Code themes).
+
+### Fixed
+- HTTP 404 from chat when the default model tag was bogus (script
+  silently warned-and-continued before — now fatal).
+- Model list dropdown showing fewer models than `ollama list` (newer
+  Ollama `/api/tags` returns `m.model` instead of `m.name` for some
+  entries).
+- Webview frozen at `(loading…)` after escaping `\n` inside template
+  literal-embedded JS strings.
+- `compactJson` reference error during agent tool turns.
+- `publish-ubuntu.sh` failing on the second run because `npm install`
+  re-wrote `package-lock.json`.
+
 ## [0.1.0] — Initial Marketplace release
 
 ### Added

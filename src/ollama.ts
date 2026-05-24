@@ -224,24 +224,89 @@ export async function chatFull(
   return { content: out, tool_calls: toolCalls };
 }
 
+/**
+ * Parse the JSON body of GET /api/tags into a sorted, deduped list of model
+ * names. Tolerates several response shapes Ollama has shipped over time:
+ *   { models: [{ name: "llama3.1:8b", ... }, ...] }     // original
+ *   { models: [{ model: "llama3.1:8b", ... }, ...] }    // newer (some builds)
+ *   { models: [{ name: ..., model: ... }, ...] }        // both fields
+ *   { models: ["llama3.1:8b", ...] }                    // bare strings
+ * Entries missing both 'name' and 'model' are dropped instead of silently
+ * becoming empty options in the dropdown.
+ */
+export function parseTagsResponse(body: unknown): string[] {
+  const obj = (body ?? {}) as any;
+  const arr: any[] = Array.isArray(obj.models)
+    ? obj.models
+    : Array.isArray(obj)
+    ? obj
+    : [];
+  const names: string[] = [];
+  for (const m of arr) {
+    let n: unknown;
+    if (typeof m === "string") n = m;
+    else if (m && typeof m === "object") n = (m as any).name ?? (m as any).model;
+    if (typeof n === "string" && n.length > 0) names.push(n);
+  }
+  // dedup preserving first-seen order, then sort alphabetically for stable UI.
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const n of names) if (!seen.has(n)) { seen.add(n); uniq.push(n); }
+  uniq.sort((a, b) => a.localeCompare(b));
+  return uniq;
+}
+
 export async function listModels(endpoint: string): Promise<string[]> {
   const url = new URL("/api/tags", endpoint);
   return new Promise((resolve, reject) => {
     const lib = url.protocol === "https:" ? https : http;
-    lib
-      .get(url, (res) => {
-        let buf = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (buf += c));
+    // Use http.request rather than http.get so we can set headers and a
+    // generous read timeout: Ollama hosts with many models return larger
+    // response bodies, and silent socket timeouts on slower machines were
+    // causing partial / dropped responses ("only a few models in the
+    // dropdown" while 'ollama list' showed many more).
+    const req = lib.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname + url.search,
+        method: "GET",
+        headers: { Accept: "application/json" },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer | string) =>
+          chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c))
+        );
         res.on("end", () => {
+          const buf = Buffer.concat(chunks).toString("utf8");
+          const status = res.statusCode ?? 0;
+          if (status < 200 || status >= 400) {
+            reject(
+              new Error(
+                `Ollama /api/tags HTTP ${status}: ${buf.slice(0, 300)}`
+              )
+            );
+            return;
+          }
           try {
             const j = JSON.parse(buf);
-            resolve((j.models || []).map((m: any) => m.name).sort());
-          } catch (e) {
-            reject(e);
+            resolve(parseTagsResponse(j));
+          } catch (e: any) {
+            reject(
+              new Error(
+                `Failed to parse /api/tags response (${buf.length} bytes): ${e?.message ?? e}`
+              )
+            );
           }
         });
-      })
-      .on("error", reject);
+        res.on("error", reject);
+      }
+    );
+    req.setTimeout(15000, () => {
+      req.destroy(new Error("/api/tags timed out after 15s"));
+    });
+    req.on("error", reject);
+    req.end();
   });
 }

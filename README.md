@@ -16,6 +16,23 @@ All six installers share the same environment-variable contract:
 running, pull the configured models (failures are fatal, never silent),
 and verify them in `/api/tags` before installing the plugin.
 
+If you don’t set `CHAT_MODEL` / `COMPLETION_MODEL`, the installer **picks
+sensible defaults based on detected RAM**:
+
+| Total RAM | Tier | Chat model | Completion model |
+| --- | --- | --- | --- |
+| < 6 GB | tiny | `llama3.2:3b` | `qwen2.5-coder:0.5b-base` |
+| < 12 GB | small | `llama3.1:8b` | `qwen2.5-coder:1.5b-base` |
+| < 20 GB | medium | `qwen2.5:14b` | `qwen2.5-coder:1.5b-base` |
+| < 40 GB | large | `qwen2.5:32b` | `qwen2.5-coder:7b-base` |
+| ≥ 40 GB | huge | `llama3.3:70b` | `qwen2.5-coder:7b-base` |
+
+Override at any time:  
+`CHAT_MODEL=qwen2.5:14b ./scripts/install-ubuntu.sh`. The detection logic
+lives in `scripts/pick-models.sh` and `scripts/pick-models.ps1` (same
+tier table), and prints `==> Detected N GB RAM (tier: X) -> ...` so the
+choice is visible.
+
 The rest of this README is about the VS Code extension.
 
 ---

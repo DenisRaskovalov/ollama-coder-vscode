@@ -21,8 +21,27 @@ log()  { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m!! \033[0m %s\n" "$*" >&2; }
 die()  { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
 
-CHAT_MODEL="${CHAT_MODEL:-llama3.1:8b}"
-COMPLETION_MODEL="${COMPLETION_MODEL:-qwen2.5-coder:1.5b-base}"
+# Auto-pick chat & completion models based on system RAM, unless the user
+# explicitly set CHAT_MODEL / COMPLETION_MODEL. See scripts/pick-models.sh
+# for the tier table.
+if [ -z "${CHAT_MODEL:-}" ] || [ -z "${COMPLETION_MODEL:-}" ]; then
+  _PICK_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/../../scripts/pick-models.sh"
+  if [ -x "$_PICK_SCRIPT" ]; then
+    _PICK_OUT="$("$_PICK_SCRIPT" 2>/dev/null || true)"
+    _AUTO_CHAT="$(printf '%s\n' "$_PICK_OUT" | sed -n 's/^CHAT_MODEL=//p')"
+    _AUTO_COMP="$(printf '%s\n' "$_PICK_OUT" | sed -n 's/^COMPLETION_MODEL=//p')"
+    _AUTO_RAM_GB="$(printf '%s\n' "$_PICK_OUT" | sed -n 's/^RAM_GB=//p')"
+    _AUTO_TIER="$(printf '%s\n' "$_PICK_OUT" | sed -n 's/^TIER=//p')"
+  fi
+fi
+CHAT_MODEL="${CHAT_MODEL:-${_AUTO_CHAT:-llama3.1:8b}}"
+COMPLETION_MODEL="${COMPLETION_MODEL:-${_AUTO_COMP:-qwen2.5-coder:1.5b-base}}"
+# Tell the user how the defaults were chosen.
+if [ -n "${_AUTO_TIER:-}" ]; then
+  : "${_AUTO_RAM_GB:=?}"
+  printf "\033[1;36m==>\033[0m Detected %s GB RAM (tier: %s) -> chat=%s, completion=%s\n" \
+    "$_AUTO_RAM_GB" "$_AUTO_TIER" "$CHAT_MODEL" "$COMPLETION_MODEL"
+fi
 OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
 EXTRA_MODELS="${EXTRA_MODELS:-}"
 

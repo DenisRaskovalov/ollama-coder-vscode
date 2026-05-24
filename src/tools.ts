@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
+import { searchWeb } from "./web";
 
 /**
  * Workspace tools the LLM agent can call. Each tool has:
@@ -161,6 +162,28 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the public web for up-to-date information. Returns the top matches as 'title | url | snippet' lines. Use this for facts the model might not know, package names/versions, error messages, API docs. Default backend is DuckDuckGo (free, no key). If the user has configured Google Custom Search keys, Google is used instead.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query, e.g. 'pandas read_csv chunksize site:pandas.pydata.org'.",
+          },
+          limit: {
+            type: "number",
+            description: "Max results to return (1-10, default 5).",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];
 
 /** Execute a tool call and return a string result suitable to feed back to the model. */
@@ -188,6 +211,11 @@ export async function executeTool(
         );
       case "get_open_editors":
         return getOpenEditors();
+      case "web_search":
+        return await runWebSearch(
+          String(call.arguments.query ?? ""),
+          Number(call.arguments.limit ?? 5)
+        );
       default:
         return `ERROR: unknown tool '${call.name}'`;
     }
@@ -388,6 +416,34 @@ function guessLang(p: string): string {
     sh: "shellscript", html: "html", css: "css",
   };
   return map[ext] ?? "plaintext";
+}
+
+async function runWebSearch(query: string, limit: number): Promise<string> {
+  if (!query.trim()) return "ERROR: web_search: 'query' is required";
+  const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+  const backend = cfg.get<string>("searchBackend", "duckduckgo") as
+    | "duckduckgo"
+    | "google";
+  const googleApiKey = cfg.get<string>("googleApiKey", "");
+  const googleCseId = cfg.get<string>("googleCseId", "");
+
+  const results = await searchWeb(query, {
+    backend,
+    limit: Math.max(1, Math.min(10, limit || 5)),
+    googleApiKey: googleApiKey || undefined,
+    googleCseId: googleCseId || undefined,
+  });
+
+  if (!results.length) return `No web results for ${JSON.stringify(query)}.`;
+  const lines = results.map(
+    (r, i) =>
+      `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet.slice(0, 240)}`
+  );
+  const banner =
+    backend === "google" && googleApiKey && googleCseId
+      ? `Search (Google CSE) for "${query}":`
+      : `Search (DuckDuckGo) for "${query}":`;
+  return `${banner}\n${lines.join("\n")}`;
 }
 
 function getOpenEditors(): string {

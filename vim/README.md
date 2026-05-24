@@ -102,7 +102,19 @@ let g:ollama_coder_temperature        = 0.2
 let g:ollama_coder_context_chars      = 4000
 let g:ollama_coder_agent_max_steps    = 8
 let g:ollama_coder_default_maps       = 1
+let g:ollama_coder_search_backend     = 'duckduckgo'  " or 'google'
+let g:ollama_coder_google_api_key     = ''             " optional, for 'google'
+let g:ollama_coder_google_cse_id      = ''             " optional, for 'google'
 ```
+
+### Web search tool
+
+The agent has a `web_search(query, limit?)` tool. By default it queries
+**DuckDuckGo** (no key, no quota). Set `g:ollama_coder_search_backend = 'google'`
+together with the two key vars to switch to Google Custom Search JSON API
+(free quota: 100 queries/day). Get the keys at:
+- API key: <https://console.cloud.google.com/apis/credentials>
+- CSE id:  <https://programmablesearchengine.google.com/>
 
 ## Agent example
 

@@ -135,12 +135,13 @@ test(`no stray references to old publisher ids in marketplace contexts`, () => {
 
 test(`no stray references to the old extension name on the VS Code side`, () => {
   // The Vim sister plugin (under vim/) is allowed to keep "Ollama Coder"
-  // \u2014 it's a separately published plugin. Only the VS Code-side files
-  // should have been renamed.
+  // \u2014 it's a separately published plugin. CHANGELOG.md is also exempt:
+  // historical entries and rename-announcement notes can (and should)
+  // mention the old name. The check applies to everything users see in
+  // the running extension and to the install/publish tooling.
   const vscodeFiles = [
     "README.md",
     "DOCUMENTATION.md",
-    "CHANGELOG.md",
     "PUBLISHING.md",
     "src/extension.ts",
     "src/chatView.ts",

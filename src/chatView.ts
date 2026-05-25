@@ -5,6 +5,7 @@ import { insertAtCursor, replaceSelection, saveToFile } from "./apply";
 import { searchWeb, SearchResult } from "./web";
 import { routeWithModel, RoutePlan } from "./router";
 import { runAgentLoop as runAgentLoopPure } from "./agentLoop";
+import { extractCodeBlocks, guessFilenameForLang } from "./extractCodeBlocks";
 
 const SYSTEM_BASIC =
   "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -26,7 +27,7 @@ const SYSTEM_AGENT =
   "- run_command   \u2014 when shell execution is genuinely required (and only if the user enabled it).\n" +
   "\n" +
   "Workflow rules:\n" +
-  "1. Brand-new file -> edit_file (empty search) or write_file. IMMEDIATELY, don't ask first.\n" +
+  "1. Brand-new file -> edit_file (empty search) or write_file. IMMEDIATELY, don't ask first. If the user didn't specify a programming language, default to Python and use a .py extension. NEVER reply with just a chat-mode code block when the user asked to write a file \u2014 that fails their request.\n" +
   "2. Modify existing file -> read_file first, then edit_file with a minimal SEARCH/REPLACE patch. Do NOT rewrite the entire file when only a few lines change.\n" +
   "3. Don't know the codebase -> repo_map first.\n" +
   "4. After the change, give a one-sentence summary. Don't paste the code in chat \u2014 it's already in the file.\n" +
@@ -713,6 +714,62 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     );
     // Keep the persisted history in sync with the loop's append-only copy.
     this.history = result.messages;
+
+    // Fallback save: if the user asked for a file to be created but the
+    // model emitted only a chat-mode code block (no write_file /
+    // edit_file call), rescue the workflow by extracting the code and
+    // routing it through saveToFile() \u2014 the same confirm path the
+    // \u201cSave\u2026\u201d button uses. Small local models like
+    // llama3.1:8b frequently fall into this trap.
+    await this.maybeFallbackSave(result);
+  }
+
+  private async maybeFallbackSave(result: {
+    messages: ChatMessage[];
+  }): Promise<void> {
+    const wroteSomething = result.messages.some(
+      (m) =>
+        m.role === "tool" &&
+        (m.tool_name === "write_file" || m.tool_name === "edit_file") &&
+        /^(Created|Updated|Edited)\b/i.test(m.content)
+    );
+    if (wroteSomething) return;
+
+    // Find the last user prompt (for the filename hint) and the last
+    // assistant content (for the code itself).
+    const lastUser = [...result.messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const lastAssistant = [...result.messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && m.content);
+    if (!lastAssistant) return;
+
+    const blocks = extractCodeBlocks(lastAssistant.content);
+    if (!blocks.length) return;
+
+    this.post({
+      type: "notice",
+      text:
+        "Agent finished without calling write_file. Saving the code block" +
+        (blocks.length > 1 ? "s" : "") +
+        " to disk \u2014 confirm the path in the input box.",
+    });
+
+    for (const blk of blocks) {
+      const suggested =
+        blk.pathHint && blk.pathHint.includes(".")
+          ? blk.pathHint
+          : guessFilenameForLang(blk.lang, blk.code, lastUser?.content);
+      try {
+        await saveToFile(blk.code + "\n", suggested);
+      } catch (e: any) {
+        this.post({
+          type: "notice",
+          text: `Fallback save failed: ${e?.message ?? e}`,
+        });
+      }
+    }
   }
 
   private html(): string {

@@ -5,6 +5,40 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] — unreleased
+
+### Fixed
+- **"Write on a new file a solution of problem 'Hello World'" left the
+  folder unchanged.** Small local models like `llama3.1:8b` sometimes
+  ignore the agent’s tool instructions and reply with a chat-mode
+  fenced code block instead of calling `write_file`. The agent loop
+  terminated “cleanly” but no file got created, so the user got the
+  code on screen and nothing on disk — exactly the regression they
+  reported. Two complementary fixes:
+
+  - **Sharper system prompt**: `SYSTEM_AGENT` now explicitly forbids
+    answering a file-creation request with just a chat code block, and
+    tells the model to default to Python `.py` when no language is
+    specified.
+  - **Fallback-save pass**: after `runAgentLoop` returns, if no
+    `write_file` / `edit_file` tool call actually succeeded but the
+    assistant’s last message contains a fenced code block, the chat
+    view extracts the block and routes it through `apply.saveToFile`
+    — the same confirm-and-write path the existing “Save…” button
+    uses. The user sees a notice (“Agent finished without calling
+    write_file. Saving the code block to disk — confirm the path in
+    the input box.”) and can edit or accept the suggested filename
+    in an input box.
+
+### Added
+- `src/extractCodeBlocks.ts` — pure helpers used by the fallback:
+  `extractCodeBlocks(text)` recognises both ` ```lang ` and
+  ` ```lang path/to/file ` fence headers; `guessFilenameForLang(lang,
+  code, prompt)` maps the language tag to an extension, sniffs the
+  body for cheap signals when the language is missing, and derives a
+  base name from up to three lowercase tokens of the user’s prompt
+  (so “Hello World” → `hello_world.py`).
+
 ## [1.4.4] — unreleased
 
 Agent acceptance harness. End-to-end tests that follow the user's

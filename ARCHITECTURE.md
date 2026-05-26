@@ -425,10 +425,10 @@ language understanding.**
 
 | Migration step (§4.5) | State |
 | --- | --- |
-| 4a. Introduce `src/router.ts` behind `ollamaCoder.useLlmRouter` | **shipped in v1.4.2** — schema-validated `RoutePlan`, `chatView` calls `routeWithModel` when the flag is on; falls back to regex on failure or when off |
-| 4b. Shadow mode | **shipped in v1.4.2** — set `ollamaCoder.shadowLlmRouter: true` to log every router decision in chat without acting on it |
-| 4c. Swap the default | **not yet** |
-| 4d. Delete the regex classifiers | **not yet** |
+| 4a. Introduce `src/router.ts` behind `ollamaCoder.useLlmRouter` | **shipped in v1.4.2** |
+| 4b. Shadow mode | **shipped in v1.4.2** (`ollamaCoder.shadowLlmRouter`) |
+| 4c. Swap the default | **shipped in v1.4.7** — `useLlmRouter` defaults to `true`. Regex stays as the fallback when the router returns null. `RoutePlan` grew `language`, `needs_web`, `problem_source`, `problem_id` so the router can output everything the regex layer used to compute. |
+| 4d. Delete the regex classifiers | **not yet** — want a release of soak time first |
 
 The regex classifiers in §2.2 remain authoritative by default in v1.4.2.
 Users who turn `useLlmRouter` on get the LLM-driven pipeline today.

@@ -25,6 +25,8 @@ const {
   ROUTER_SYSTEM_PROMPT,
 } = require(routerPath);
 
+const { default: _ignored } = { default: null }; // keep file shape stable
+
 /* ----------------------------- isValidRoutePlan -------------------------- */
 
 test("isValidRoutePlan accepts a minimal chat plan", () => {
@@ -143,6 +145,106 @@ test("coerceRoutePlan trims target_path and rejects whitespace-only", () => {
 
 /* --------------------------- router system prompt ------------------------ */
 
+/* ----------------- new optional RoutePlan fields (v1.4.7) ----------------- */
+
+test("isValidRoutePlan accepts the new optional fields", () => {
+  // language
+  assert.equal(
+    isValidRoutePlan({ kind: "chat", rephrased: "x", language: "python" }),
+    true
+  );
+  // needs_web
+  assert.equal(
+    isValidRoutePlan({ kind: "chat", rephrased: "x", needs_web: true }),
+    true
+  );
+  // problem_source + problem_id together (typical LeetCode case)
+  assert.equal(
+    isValidRoutePlan({
+      kind: "create_file",
+      rephrased: "x",
+      target_path: "leetcode_1000.py",
+      problem_source: "LeetCode",
+      problem_id: "1000",
+    }),
+    true
+  );
+});
+
+test("isValidRoutePlan rejects bad types for new fields", () => {
+  assert.equal(
+    isValidRoutePlan({ kind: "chat", rephrased: "x", language: 42 }),
+    false
+  );
+  assert.equal(
+    isValidRoutePlan({ kind: "chat", rephrased: "x", needs_web: "yes" }),
+    false
+  );
+  assert.equal(
+    isValidRoutePlan({
+      kind: "chat",
+      rephrased: "x",
+      problem_source: { foo: 1 },
+    }),
+    false
+  );
+});
+
+test("coerceRoutePlan normalises language to lowercase, trims strings", () => {
+  const plan = coerceRoutePlan(
+    {
+      kind: "create_file",
+      rephrased: "hi",
+      target_path: "  hello.py ",
+      language: "  Python ",
+      problem_source: "  LeetCode ",
+      problem_id: "  1000 ",
+      needs_web: false,
+    },
+    "fallback"
+  );
+  assert.equal(plan?.language, "python");
+  assert.equal(plan?.target_path, "hello.py");
+  assert.equal(plan?.problem_source, "LeetCode");
+  assert.equal(plan?.problem_id, "1000");
+  assert.equal(plan?.needs_web, false);
+});
+
+test("coerceRoutePlan drops whitespace-only optional strings", () => {
+  const plan = coerceRoutePlan(
+    {
+      kind: "chat",
+      rephrased: "x",
+      language: "   ",
+      problem_source: "",
+    },
+    "f"
+  );
+  assert.ok(plan);
+  assert.equal(plan.language, undefined);
+  assert.equal(plan.problem_source, undefined);
+});
+
+test("ROUTER_SYSTEM_PROMPT covers the new RoutePlan fields", () => {
+  // The prompt is the model's whole spec. If any of these get dropped
+  // the router silently loses functionality.
+  for (const needle of [
+    "language",
+    "needs_web",
+    "problem_source",
+    "problem_id",
+    "LeetCode",
+    "Codeforces",
+    "Project Euler",
+    "Advent of Code",
+  ]) {
+    assert.ok(
+      ROUTER_SYSTEM_PROMPT.includes(needle),
+      `ROUTER_SYSTEM_PROMPT missing keyword: ${needle}`
+    );
+  }
+});
+
 test("ROUTER_SYSTEM_PROMPT mentions every routing rule keyword", () => {
   // Required because the prompt is the model's whole spec. If someone
   // deletes one rule, behaviour silently drifts.
@@ -183,12 +285,20 @@ test("chatView reads useLlmRouter / shadowLlmRouter / routerModel settings", () 
   );
 });
 
-test("router is off by default in package.json", () => {
+test("router is ON by default in package.json (as of v1.4.7)", () => {
+  // The default flipped in v1.4.7: LLM router is now authoritative.
+  // Regex remains as the fast fallback path when the router fails.
   const pkg = JSON.parse(
     fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
   );
   const cfg = pkg.contributes.configuration.properties;
-  assert.equal(cfg["ollamaCoder.useLlmRouter"].default, false);
+  assert.equal(
+    cfg["ollamaCoder.useLlmRouter"].default,
+    true,
+    "useLlmRouter must default to true in v1.4.7+"
+  );
+  // Shadow mode stays off \u2014 it's a debugging knob.
   assert.equal(cfg["ollamaCoder.shadowLlmRouter"].default, false);
+  // routerModel still empty \u2014 falls back to completionModel.
   assert.equal(cfg["ollamaCoder.routerModel"].default, "");
 });

@@ -506,6 +506,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     // Web-search intent: prepend retrieved results as context so the LLM
     // can ground its answer. Works without agent mode \u2014 plain RAG.
+    // The LLM router (computed below) can ALSO trigger web fetching via
+    // its needs_web flag; that path lives inside the routing block.
     if (looksLikeWebSearchIntent(text)) {
       try {
         const { results, backend } = await this.doWebSearch(text, 5);
@@ -538,7 +540,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const intent = looksLikeFileWriteIntent(text);
     const showIntent = looksLikeShowIntent(text);
 
-    const useLlmRouter = cfg.get<boolean>("useLlmRouter", false);
+    // Default changed in v1.4.7: LLM router is authoritative; regex stays
+    // as the fallback when the router fails / times out. See
+    // ARCHITECTURE.md §4.5 step 4c.
+    const useLlmRouter = cfg.get<boolean>("useLlmRouter", true);
     let routerPlan: RoutePlan | null = null;
     if (useLlmRouter || cfg.get<boolean>("shadowLlmRouter", false)) {
       try {
@@ -573,17 +578,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (useLlmRouter && routerPlan) {
-      // Authoritative LLM-driven routing.
+      // Authoritative LLM-driven routing. Build a hint block from every
+      // optional field the router populated, so the worker model gets the
+      // same signals the old regex pipeline would have computed.
+      const hints: string[] = [];
       if (routerPlan.kind === "create_file" || routerPlan.kind === "edit_file") {
         effectiveAgent = true;
-        if (routerPlan.target_path) {
-          userContent =
-            userContent +
-            `\n\n(Router hint: target file is ${routerPlan.target_path}.)`;
+        if (routerPlan.target_path) hints.push(`target file: ${routerPlan.target_path}`);
+      }
+      if (routerPlan.language) hints.push(`language: ${routerPlan.language}`);
+      if (routerPlan.problem_source && routerPlan.problem_id) {
+        hints.push(
+          `problem reference: ${routerPlan.problem_source} ${routerPlan.problem_id} \u2014 ` +
+          `if you don't remember the exact statement, call web_search with ` +
+          `\`${routerPlan.problem_source} ${routerPlan.problem_id}\` first`
+        );
+        effectiveAgent = true; // problem refs always go to disk
+      }
+      if (hints.length) {
+        userContent = userContent + "\n\n(Router hints: " + hints.join("; ") + ".)";
+      }
+      // Router-driven web fetch. Only kicks in if the earlier
+      // looksLikeWebSearchIntent didn't already prepend results.
+      const earlierAlreadyPrependedWeb =
+        userContent.includes("Use these web search results to answer:");
+      if (
+        !earlierAlreadyPrependedWeb &&
+        (routerPlan.needs_web === true ||
+          routerPlan.kind === "web_search_then_chat")
+      ) {
+        try {
+          const { results, backend } = await this.doWebSearch(text, 5);
+          if (results.length) {
+            this.post({
+              type: "notice",
+              text: `Router asked for web context \u2014 pulled ${results.length} result(s) from ${backend}.`,
+            });
+            userContent =
+              `Use these web search results to answer:\n\n` +
+              formatSearchResults(text, backend, results) +
+              `\n\n---\n\nUser question:\n${userContent}`;
+          }
+        } catch {
+          /* router-driven web fetch is best-effort */
         }
       }
-      // chat / explain_selection / refactor_selection / run_command default to
-      // their normal paths. web_search_then_chat is handled below.
     } else {
       // Existing regex pipeline (still authoritative when LLM router off).
       if (!agent && intent && showIntent) {

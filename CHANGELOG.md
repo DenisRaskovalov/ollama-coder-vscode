@@ -5,6 +5,48 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] — unreleased
+
+Language understanding now lives in Ollama, not regex. This is
+**step 4c of the migration plan in ARCHITECTURE.md §4.5** — the
+LLM router becomes authoritative by default; the regex pipeline
+remains as the fast fallback for when the router fails or times out.
+
+### Changed
+- `ollamaCoder.useLlmRouter` default: `false` → **`true`**. Every chat
+  turn now goes through a small structured `format: 'json'` call to
+  the router (default model: the completion model, typically
+  `qwen2.5-coder:1.5b-base` — fast enough for sub-second routing on
+  most hardware).
+- The router’s `RoutePlan` schema grew four optional fields so the
+  model can convey everything the regex layer used to compute:
+  - `language` — replaces `inferLanguageExt`.
+  - `needs_web` — replaces `looksLikeWebSearchIntent` as an
+    authoritative signal for RAG-style auto-fetch.
+  - `problem_source` + `problem_id` — replaces `detectProblemRef` for
+    LeetCode / Codeforces / Project Euler / Advent of Code.
+- `ROUTER_SYSTEM_PROMPT` expanded with an explicit schema and 8
+  numbered routing rules covering every case the regex pipeline
+  handles today (show-on-screen, file write, file edit, web search,
+  selection actions, run command, competitive-programming
+  references). Worker model and router model are explicitly
+  different roles, spelled out at the top of the system prompt.
+- `chatView.handleSend` consumes the new fields to build a unified
+  hint block (`(Router hints: target file: leetcode_1000.py;
+  language: python; problem reference: LeetCode 1000 …)`) and to
+  drive web-search auto-fetch when `needs_web` is true.
+
+### Kept (safety net)
+- The regex classifiers (`looksLikeFileWriteIntent`,
+  `looksLikeShowIntent`, `looksLikeWebSearchIntent`,
+  `inferLanguageExt`, `detectProblemRef`) are still in the codebase
+  and still tested. They run when the router returns null (timeout,
+  bad JSON, no Ollama). Step 4d (delete the regex) is intentionally
+  NOT in this PR; we want a release of soak time first.
+- All 277 pre-1.4.7 tests still pass. The router is invoked through
+  the same `routeWithModel`/`coerceRoutePlan` path that
+  `router.test.js` already exercises.
+
 ## [1.4.6] — unreleased
 
 ### Added

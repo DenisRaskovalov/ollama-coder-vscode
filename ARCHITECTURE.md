@@ -389,6 +389,31 @@ Nothing happens "elsewhere".
 
 Last updated for **v1.4.4**.
 
+### Test coverage — positive AND negative (v1.4.8)
+
+Every surface area has both kinds of test. The rule of thumb when adding a
+feature: for every “does the right thing on the happy path” test, add at
+least one “fails closed on bad input” test.
+
+| Area | Positive | Negative |
+| --- | --- | --- |
+| Regex classifiers (`looksLike*`, `inferLanguageExt`) | 30+ “must match” phrasings | 15+ “must NOT match” (`fileIntent`, `webSearchIntent`) |
+| Problem-ref detector | 10 LeetCode / Codeforces / Project Euler / AoC shapes | 5 lookalikes (`we have 1000 customers`, `project deadline 50 days`, …) |
+| LLM router schema | all 7 valid kinds + every new optional field | bad types, unknown kinds, missing `target_path` for file kinds, wrappers, whitespace-only |
+| Router HTTP layer | `{plan: ...}` wrapper unwrapping | chat throws, garbage JSON, non-object JSON, empty content, timeout, unknown kind |
+| `applySearchReplace` | in-place, new-file, multi-line, CRLF tolerance, whitespace preservation | empty search, search-not-found (with retry coaching), multiple matches (with retry coaching), empty original + non-empty search |
+| `extractSymbols` / `renderRepoMap` | TS / Python / Rust / Go / Bash + line numbers | unknown extensions, `maxPerFile` cap, absurdly long lines, `maxBytes` truncation, empty corpus |
+| `parseTagsResponse` (model list) | classic `{name}` + newer `{model}` + bare strings + bare array | null / undefined / `{}` / `{models: null}` / `{models: "oops"}` |
+| Sandbox enforcement (test fs executor) | workspace-relative paths read & write correctly | `..` traversal, leading-slash coercion stays inside root, empty path, null/undefined args, unknown tool name |
+| `run_command` tool | schema + registration | disabled-by-default error message, empty command rejected, `enableRunCommand=false` blocks at the call site |
+| Agent loop | full happy path + max-steps termination | `executeTool` throws → wrapped as `ERROR:` tool message; `chat` rejects → bubbles up; `maxSteps=0` short-circuits; history preserved on truncation |
+| Webview HTML | nonced `<script>` block, all entry points present | embedded JS parses as valid JS (regression guard for the “\\n stuck (loading…)” bug) |
+| Installers (`scripts/install-*.sh`, `.ps1`) | `bash -n`, every contract env var present, platform-correct pack path | n/a at unit level; smoke-checked by `vim/scripts/install-ubuntu.sh` E2E |
+| Publish script | bash -n, every Step N/8 marker, npm test runs before vsce package | `vsce publish` against an already-published version (idempotent), `git push` of an already-pushed tag, second-run lockfile churn |
+| E2E scenarios (`test/agentE2E.test.js`) | 6 “empty dir → commands → compiles & runs” scenarios | scenario 5: agent’s first `edit_file` rejected, agent recovers on retry — the SEARCH/REPLACE retry coaching as a live control loop |
+
+Total: **309 tests** as of v1.4.8.
+
 ### Acceptance harness (v1.4.4)
 
 From this version on, the agent has **end-to-end scenario tests** in

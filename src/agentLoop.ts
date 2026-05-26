@@ -105,10 +105,20 @@ export async function runAgentLoop(
 
     for (const tc of r.tool_calls) {
       deps.onToolCall?.(tc.name, tc.arguments);
-      const result = await deps.executeTool({
-        name: tc.name,
-        arguments: tc.arguments,
-      });
+      // Defence in depth: even though tools.executeTool catches its own
+      // errors and returns 'ERROR: ...' strings, custom executors
+      // (tests, future extensions) might throw. A thrown executor must
+      // not crash the agent loop \u2014 the model deserves a chance to
+      // see the error and recover on the next round.
+      let result: string;
+      try {
+        result = await deps.executeTool({
+          name: tc.name,
+          arguments: tc.arguments,
+        });
+      } catch (e: any) {
+        result = `ERROR: tool '${tc.name}' threw: ${e?.message ?? e}`;
+      }
       deps.onToolResult?.(tc.name, result.slice(0, 400));
       messages.push({
         role: "tool",

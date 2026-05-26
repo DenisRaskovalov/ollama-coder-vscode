@@ -5,6 +5,33 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] — unreleased
+
+### Added
+- **Competitive-programming problem detector**. New `src/problemRef.ts`
+  recognises four well-known sources in the user’s prompt and produces
+  a structured hint the agent acts on:
+  - LeetCode (`leetcode 1000`, `leetcode #200`, `LeetCode problem 42`)
+  - Codeforces (`codeforces 1234A`, `Codeforces round 1898 problem B`)
+  - Project Euler (`project euler 50`, `project euler problem #7`)
+  - Advent of Code (`AoC 2022 day 17`, `advent of code day 5 2023`)
+
+  Each match yields a `source`, `id`, `suggestedFilename`
+  (`leetcode_1000.py`, `codeforces_1234A.py`, etc.), `referenceUrl`,
+  and an augmentation appended to the user message: *“(Problem
+  reference detected: LeetCode 1000. If you don’t remember the exact
+  problem statement, call web_search with `LeetCode 1000` and read the
+  result before solving. Save the solution to `leetcode_1000.py`.)”*
+  When a problem reference is detected we also force `effectiveAgent =
+  true` so the agent has `web_search` and `write_file` available.
+
+### Fixed
+- *“Generate a solution of LeetCode problem 1000 in a new file on disk”*
+  now reliably ends with a file on disk. The chat view detects the
+  LeetCode reference, suggests `leetcode_1000.py`, invites `web_search`
+  if the model doesn’t remember the problem, and the existing
+  fallback-save pass from 1.4.5 catches any residual edge case.
+
 ## [1.4.5] — unreleased
 
 ### Fixed

@@ -6,6 +6,7 @@ import { searchWeb, SearchResult } from "./web";
 import { routeWithModel, RoutePlan } from "./router";
 import { runAgentLoop as runAgentLoopPure } from "./agentLoop";
 import { extractCodeBlocks, guessFilenameForLang } from "./extractCodeBlocks";
+import { detectProblemRef } from "./problemRef";
 
 const SYSTEM_BASIC =
   "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -613,6 +614,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           userContent +
           `\n\n(Filename hint: the user did not specify a path. Use a sensible "${lang.ext}" file for ${lang.name}, e.g. "hello_world${lang.ext}".)`;
       }
+    }
+
+    // Competitive-programming / coding-katas problem reference (LeetCode N,
+    // Codeforces 1234A, Project Euler N, Advent of Code year/day, ...). When
+    // detected, tell the agent which problem this is, suggest a filename, and
+    // explicitly invite web_search if it doesn't remember the statement.
+    const problemRef = detectProblemRef(text);
+    if (problemRef) {
+      userContent = userContent + problemRef.augmentation;
+      this.post({
+        type: "notice",
+        text: `Detected ${problemRef.source} ${problemRef.id} \u2192 will save as ${problemRef.suggestedFilename}.`,
+      });
+      // Force agent mode \u2014 we want a file on disk, and we want web_search
+      // available so the model can look up the problem if needed.
+      if (!effectiveAgent) effectiveAgent = true;
     }
 
     if (this.history.length === 0) {

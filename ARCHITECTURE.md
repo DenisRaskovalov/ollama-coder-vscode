@@ -165,6 +165,24 @@ These hold today and are the contract any future refactor must keep:
 7. **Backward-compatible defaults.** Auto-picks (model, filename, search
    backend) only fire when the user did not configure them. Explicit
    user config always wins.
+8. **Ollama has no filesystem access. The plugin owns all I/O.**
+   Ollama is a model-inference server. It speaks HTTP only; it cannot
+   `read`, `write`, `unlink`, or `exec` anything on disk. Every byte the
+   model “sees” from the user's workspace is pulled by the plugin
+   (`tools.read_file`, `repo_map`, `@mention` expansion in
+   `chatView.expandMentions`) and packaged into a chat message. Every
+   file the model produces (`tools.write_file`, `tools.edit_file`, and
+   the `apply.saveToFile` fallback in `chatView.maybeFallbackSave`) is
+   written by the *plugin's* code, in the *plugin's* process, on the
+   *user's* machine, with the *user's* modal confirmation. If a model
+   ever produces text like *“I have created the file”* without calling
+   one of those tools, **nothing was written.** The system prompt for
+   the agent says this explicitly.
+
+   Source-level audit (pinned by `test/ioBoundary.test.js`): the only
+   files in `src/` that touch the filesystem or spawn processes are
+   `tools.ts`, `apply.ts`, and `chatView.ts` (the last only for
+   `@mention` reads). Every other module is pure or HTTP-only.
 
 ---
 

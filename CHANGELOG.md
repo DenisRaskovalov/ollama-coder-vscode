@@ -5,6 +5,57 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.9] — unreleased
+
+### Fixed — the *“I opened a folder but no file ever shows up”* bug
+
+Root cause was the write/edit confirm dialog: it was `{ modal: false }`,
+so it appeared as a small toast in the bottom-right corner of VS Code,
+**auto-dismissed after a few seconds**, and silently resolved to
+`undefined`. The tool then correctly treated that as “user rejected”,
+the model said *“ok, didn’t write the file”*, and the user saw nothing
+happen.
+
+Three changes:
+
+1. **Every confirm dialog is now `{ modal: true }`** in `src/tools.ts`
+   for `write_file`, `edit_file`, and `run_command`. The modal blocks
+   the editor until the user answers — it cannot be missed.
+
+2. **The dialog text shows the workspace path and proposed filename
+   together**, e.g.
+     > *Ollama Free Coder wants to create a file:*
+     >
+     > *`hello_world.py` (123 chars)*
+     >
+     > *in workspace: `/home/me/projects/demo`*
+     >
+     > *Allow?*
+
+   So the user sees both *what* will be written and *where*.
+
+3. **No-workspace error is loud**. `chatView.handleSend` now refuses to
+   start the agent when `vscode.workspace.workspaceFolders` is empty,
+   with the explicit message *“⚠ No folder is open in VS Code. Use
+   File → Open Folder… first.”* When a folder IS open, the chat shows
+   a *“Writing into workspace: <path>”* notice before the agent runs,
+   so the user always knows where files will land.
+
+### Tests: 309 → 315 (+6)
+New `test/modalWriteConfirm.test.js`:
+- Source contains **NO** `{ modal: false }` confirm dialogs.
+- `writeFile`, `editFileTool`, and `runShellCommand` each contain a
+  `showWarningMessage` with `{ modal: true }`.
+- `writeFile` and `editFileTool` include `workspaceRoot().fsPath` in
+  the dialog body.
+- `chatView` checks `workspaceFolders` before agent runs and emits the
+  *“Open Folder”* hint.
+- `chatView` emits the *“Writing into workspace: …”* notice before each
+  agent turn.
+
+Verified by hand: temporarily re-introducing `{ modal: false }` turns
+4 of the 6 new cases red; restoring the fix returns to green.
+
 ## [1.4.8] — unreleased
 
 Auditing and closing the gap between positive and negative tests.

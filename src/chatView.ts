@@ -693,6 +693,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const ctrl = new AbortController();
     this.inflight = ctrl;
 
+    // If the user wants a file written but no folder is open, every
+    // workspace tool will fail with 'No workspace folder is open.'
+    // Surface that LOUDLY before kicking off the agent so the user knows
+    // they need to File -> Open Folder first.
+    if (effectiveAgent) {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) {
+        this.post({
+          type: "assistantError",
+          text:
+            "\u26A0 No folder is open in VS Code. Use File \u2192 Open Folder\u2026 first; " +
+            "the agent writes files relative to the workspace root and cannot create one without it.",
+        });
+        return;
+      } else {
+        this.post({
+          type: "notice",
+          text: `Writing into workspace: ${folders[0].uri.fsPath}`,
+        });
+      }
+    }
+
     try {
       if (effectiveAgent) {
         await this.runAgentLoop(endpoint, model, temperature, ctrl.signal);

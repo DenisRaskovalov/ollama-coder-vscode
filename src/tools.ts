@@ -431,14 +431,22 @@ async function writeFile(
 
   if (requireConfirm) {
     const verb = existed ? "Overwrite" : "Create";
+    // IMPORTANT: modal: true. The previous non-modal toast in the bottom-right
+    // corner auto-dismissed after a few seconds and silently resolved to
+    // 'undefined', which we (correctly) interpreted as 'rejected'. Users
+    // reported 'no file was created' because they never saw the dialog. The
+    // modal blocks the editor until answered \u2014 the user cannot miss it.
     const pick = await vscode.window.showWarningMessage(
-      `Ollama Free Coder agent wants to ${verb.toLowerCase()} ${rel} (${content.length} chars).`,
-      { modal: false },
+      `Ollama Free Coder wants to ${verb.toLowerCase()} a file:\n\n` +
+        `    ${rel}    (${content.length} chars)\n\n` +
+        `in workspace: ${workspaceRoot().fsPath}\n\n` +
+        `Allow?`,
+      { modal: true },
       verb,
-      "Show diff first",
-      "Reject"
+      "Show diff first"
     );
-    if (pick === "Reject" || !pick) {
+    if (!pick) {
+      // User clicked Cancel / dismissed.
       return `User rejected write to ${rel}.`;
     }
     if (pick === "Show diff first") {
@@ -530,15 +538,20 @@ async function editFileTool(
   }
 
   if (requireConfirm) {
-    const verb = existed ? "Apply edit to" : "Create";
+    const verb = existed ? "Apply" : "Create";
+    // Modal so the user cannot miss it. See the long comment in writeFile
+    // above for why we don't use a toast.
     const pick = await vscode.window.showWarningMessage(
-      `Ollama Free Coder agent: ${verb.toLowerCase()} ${rel}? (${result.message})`,
-      { modal: false },
-      existed ? "Apply" : "Create",
-      "Show diff first",
-      "Reject"
+      `Ollama Free Coder wants to ${existed ? "edit" : "create"} a file:\n\n` +
+        `    ${rel}\n\n` +
+        `(${result.message})\n\n` +
+        `in workspace: ${workspaceRoot().fsPath}\n\n` +
+        `Allow?`,
+      { modal: true },
+      verb,
+      "Show diff first"
     );
-    if (pick === "Reject" || !pick) {
+    if (!pick) {
       return `User rejected edit to ${rel}.`;
     }
     if (pick === "Show diff first") {
@@ -546,7 +559,7 @@ async function editFileTool(
       const confirm = await vscode.window.showWarningMessage(
         `Apply edit to ${rel}?`,
         { modal: true },
-        existed ? "Apply" : "Create"
+        verb
       );
       if (!confirm) return `User rejected edit to ${rel}.`;
     }

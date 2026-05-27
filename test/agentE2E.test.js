@@ -300,6 +300,97 @@ test("E2E: repo_map identifies the right file, then edit_file modifies it", asyn
 /* Scenario 5: agent failure recovery \u2014 edit_file rejects ambiguous match */
 /* ----------------------------------------------------------------------- */
 
+/* ----------------------------------------------------------------------- */
+/* Scenario 6: 'Generate a solution of LeetCode problem 1000 in a new file' */
+/* The user's exact prompt from the bug report. End state: a Python file    */
+/* leetcode_1000.py exists on disk and is at least syntactically valid.     */
+/* ----------------------------------------------------------------------- */
+
+const { hasBinary: _hasBin, runProcess: _runProc } = require("./_fsToolExecutor.js");
+
+test("E2E: 'Generate a solution of LeetCode problem 1000 in a new file on disk' -> writes leetcode_1000.py", async (t) => {
+  const root = mkTempDir("leetcode");
+  const exec = makeExecutor(root);
+
+  // Script the agent the way a *cooperating* model would behave when it
+  // gets our new problem-ref augmentation: search first, then write.
+  const chat = scriptedChat([
+    {
+      tool_calls: [
+        { name: "web_search", arguments: { query: "LeetCode 1000" } },
+      ],
+    },
+    {
+      tool_calls: [
+        {
+          name: "write_file",
+          arguments: {
+            path: "leetcode_1000.py",
+            content:
+              "def minimumCostToMergeStones(stones, k):\n" +
+              "    n = len(stones)\n" +
+              "    if (n - 1) % (k - 1) != 0:\n" +
+              "        return -1\n" +
+              "    # Solution body omitted in the test; what matters\n" +
+              "    # is that the file is on disk and is valid Python.\n" +
+              "    return 0\n",
+          },
+        },
+      ],
+    },
+    { content: "Wrote leetcode_1000.py." },
+  ]);
+
+  const result = await runAgentLoop(
+    baseAgentOpts([
+      { role: "system", content: "agent prompt" },
+      {
+        role: "user",
+        content:
+          "Generate a solution of LeetCode problem 1000 in a new file on disk\n\n" +
+          // The chatView would normally inject this; we simulate it so the
+          // scripted model has the same context it would in production.
+          "(Problem reference detected: LeetCode 1000. " +
+          "If you don't remember the exact problem statement, call web_search with " +
+          "`LeetCode 1000` and read the result before solving. " +
+          "Save the solution to `leetcode_1000.py`. " +
+          "Reference URL: https://leetcode.com/problemset/all/?search=1000 )",
+      },
+    ]),
+    { chat, executeTool: exec.executeTool }
+  );
+
+  // 1. Agent went through the right tool sequence.
+  const toolSeq = result.messages
+    .filter((m) => m.role === "tool")
+    .map((m) => m.tool_name);
+  assert.deepEqual(toolSeq, ["web_search", "write_file"]);
+
+  // 2. The file is on disk with the suggested name.
+  const written = path.join(root, "leetcode_1000.py");
+  assert.ok(
+    fs.existsSync(written),
+    "leetcode_1000.py must be created on disk"
+  );
+
+  // 3. The written content is at least valid Python (compile check) if
+  //    python3 is available. Otherwise just assert non-empty contents.
+  const body = fs.readFileSync(written, "utf8");
+  assert.ok(body.length > 0, "file must be non-empty");
+  if (_hasBin("python3")) {
+    const r = await _runProc(
+      "python3",
+      ["-c", `import py_compile; py_compile.compile('${written}', doraise=True)`],
+      { cwd: root }
+    );
+    assert.equal(
+      r.status,
+      0,
+      `python3 -c py_compile failed: ${r.stderr}`
+    );
+  }
+});
+
 test("E2E: agent recovers when edit_file rejects an ambiguous SEARCH", async () => {
   const root = mkTempDir("py-retry");
   fs.writeFileSync(

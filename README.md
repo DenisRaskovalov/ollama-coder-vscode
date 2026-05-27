@@ -1,7 +1,30 @@
 # Ollama Free Coder
 
+[![Install on the VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/DenRaskovalov.ollama-free-coder?label=VS%20Code%20Marketplace&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-free-coder)
+[![Marketplace installs](https://img.shields.io/visual-studio-marketplace/i/DenRaskovalov.ollama-free-coder?label=installs)](https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-free-coder)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+
 A fully-local LLM coding assistant powered by [Ollama](https://ollama.com).
 Nothing leaves your machine.
+
+## Install (one-liner, recommended)
+
+The VS Code extension is published on the official Marketplace:
+
+- **VS Code UI**: open *Extensions* (`Cmd/Ctrl+Shift+X`), search for
+  **Ollama Free Coder**, click *Install*.
+- **CLI**:
+  ```sh
+  code --install-extension DenRaskovalov.ollama-free-coder
+  ```
+- **Direct URL**: <https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-free-coder>
+
+You still need a running Ollama server and at least one pulled model.
+The Ubuntu / macOS / Windows installers in `scripts/` (described below)
+automate that part for you, but with the Marketplace install you can
+also just `brew install ollama` / `winget install Ollama.Ollama` / etc.
+and pull a model manually.
+
 
 This repository ships **two sister plugins** that share the same ideas:
 

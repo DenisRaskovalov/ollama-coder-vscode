@@ -5,6 +5,39 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] — unreleased
+
+Auditing and closing the gap between positive and negative tests.
+
+### Added
+- `test/sandboxNegative.test.js` (15 cases). For every workspace tool,
+  asserts the sandbox invariant: **`..` traversal rejects; absolute /
+  leading-slash paths are coerced to inside the workspace; null,
+  undefined and unknown tool names return ERROR without throwing.**
+  Also includes a positive control (workspace-relative path works).
+- `test/agentLoopNegative.test.js` (5 cases). The agent loop now
+  tolerates an `executeTool` that throws — the thrown error is wrapped
+  as `ERROR: tool 'X' threw: …` and pushed as a tool message so the
+  model gets a chance to recover. `chat` rejections still bubble up
+  (network outages should be loud). `maxSteps` is enforced (including
+  `0`), `onStoppedAtMaxSteps` fires when adversarial models won’t
+  stop emitting `tool_calls`, and the conversation history is
+  preserved across truncation.
+- `test/routerNegative.test.js` (8 cases). Every router HTTP-layer
+  failure mode returns `null` so the regex fallback runs: chat
+  throwing (`ECONNREFUSED`), garbage JSON, valid JSON with unknown
+  `kind`, `create_file` without `target_path`, hung chat (timeout),
+  empty content, JSON that is null/number/string/array.
+- `ARCHITECTURE.md` gets a **“Test coverage — positive AND negative”**
+  matrix listing every area with both kinds of test.
+
+### Changed
+- `src/agentLoop.ts`: `executeTool` is now wrapped in try/catch so a
+  thrown executor cannot crash the loop. Production behaviour is
+  unchanged because `tools.executeTool` already returns `ERROR: …`
+  strings; this is defence in depth against custom executors
+  (tests, future extensions).
+
 ## [1.4.7] — unreleased
 
 Language understanding now lives in Ollama, not regex. This is

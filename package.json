@@ -2,7 +2,7 @@
   "name": "ollama-free-coder",
   "displayName": "Ollama Free Coder",
   "description": "Code with a local Ollama LLM: inline completion, chat sidebar with @mentions and apply buttons, agent mode (read/write workspace via tools), explain/refactor/fix/tests/docstrings on selection.",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "publisher": "DenRaskovalov",
   "license": "Apache-2.0",
   "icon": "media/icon.png",
@@ -109,8 +109,8 @@
         },
         "ollamaCoder.useLlmRouter": {
           "type": "boolean",
-          "default": false,
-          "description": "Use a small LLM to classify the user's intent instead of the built-in regex pipeline. See ARCHITECTURE.md §4.3 for the migration plan."
+          "default": true,
+          "description": "Use a small LLM to classify the user's intent (default on as of v1.4.7). When the router fails or times out, the chat view falls back to the built-in regex pipeline so behaviour is never worse than the old default. See ARCHITECTURE.md §4."
         },
         "ollamaCoder.shadowLlmRouter": {
           "type": "boolean",

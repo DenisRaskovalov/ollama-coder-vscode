@@ -5,6 +5,46 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.10] — unreleased
+
+Make the architectural invariant *“Ollama has no filesystem access; the
+plugin owns all I/O”* explicit in three places that can never drift
+out of sync.
+
+### Added
+- **`ARCHITECTURE.md` §3, Invariant 8**: spells out that Ollama is a
+  model-inference server with no `read`/`write`/`unlink`/`exec`
+  capability; every byte the model sees from the workspace is pulled
+  by the plugin and packaged into a chat message; every file the model
+  “produces” is actually written by the plugin’s code, in the
+  plugin’s process, with the user’s modal confirmation. A model that
+  says *“I have created the file”* without calling a tool wrote
+  nothing.
+- **`SYSTEM_AGENT` agent prompt** now opens with this fact, in the
+  imperative: *“IMPORTANT: you cannot read, write, list, or execute
+  anything on the filesystem yourself. Every read/write/run goes
+  through the VS Code plugin via a tool call. … Saying ‘I have created
+  the file’ without calling write_file or edit_file means NOTHING got
+  written.”*
+- **`test/ioBoundary.test.js`** (4 cases) pins the invariant at the
+  source level:
+  - **The only `src/*.ts` files allowed to touch the filesystem or
+    spawn processes are `tools.ts`, `apply.ts`, `chatView.ts`.** Any
+    new I/O elsewhere fails this test with a clear message pointing
+    at the offender and at Invariant 8.
+  - Each of those three allowlisted modules must actually DO some
+    I/O — if one drops to zero, it should drop off the allowlist.
+  - `ARCHITECTURE.md` must contain the literal invariant phrasing
+    (“Ollama has no filesystem access”, “plugin owns all I/O”).
+  - `SYSTEM_AGENT` must contain the *“cannot read, write, list, or
+    execute anything on the filesystem yourself”* line and must
+    mention *“tool call”*.
+
+Verified by hand: adding a `src/_violator.ts` that imports `fs` and
+calls `fs.writeFileSync` turns the boundary test red with a message
+that names the file and the offending pattern. Removing the file
+returns 319/319 tests to green.
+
 ## [1.4.9] — unreleased
 
 ### Fixed — the *“I opened a folder but no file ever shows up”* bug

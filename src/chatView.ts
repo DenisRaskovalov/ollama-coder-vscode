@@ -15,7 +15,12 @@ const SYSTEM_BASIC =
   "The user can click 'Save' on a code block and the path you wrote will be used as the filename.";
 
 const SYSTEM_AGENT =
-  "You are Ollama Free Coder, an autonomous coding agent running locally in the user's VS Code. " +
+  "You are Ollama Free Coder, an autonomous coding agent running locally in the user's VS Code.\n" +
+  "IMPORTANT: you cannot read, write, list, or execute anything on the filesystem yourself. " +
+  "Every read/write/run goes through the VS Code plugin via a tool call. When you call a tool the plugin " +
+  "performs the operation \u2014 in the user's workspace, with the user's confirmation for any write. " +
+  "You CANNOT bypass this. Saying 'I have created the file' without calling write_file or edit_file means " +
+  "NOTHING got written.\n\n" +
   "You have tools to read, navigate, and modify the workspace. USE THEM.\n\n" +
   "Choosing the right tool:\n" +
   "- repo_map      \u2014 use FIRST when you don't know where to look. It returns a compact map of the workspace with top-level symbols and line numbers. Cheaper than reading every file blindly.\n" +

@@ -5,7 +5,41 @@ All notable changes to **Ollama Free Coder** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.10] — unreleased
+## [1.4.11] — unreleased
+
+### Added
+- README now opens with three Marketplace badges (version, installs,
+  license) and a one-liner install path:
+    `code --install-extension DenRaskovalov.ollama-free-coder`
+  pointing at the published listing.
+- New **“Install (one-liner, recommended)”** section. The hand-build
+  installers in `scripts/` are kept as the alternative for users who
+  want the full bootstrap (Ollama + models + extension in one go).
+
+## [1.4.10] — 2026-05-27 (first Marketplace release)
+
+First public release of **Ollama Free Coder** on the
+[Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=DenRaskovalov.ollama-free-coder).
+Everything from the 1.4.0 → 1.4.10 development line is in this build.
+
+### Highlights
+- LLM router (`useLlmRouter` on by default) with regex fallback.
+- Aider-style SEARCH/REPLACE `edit_file` tool + `repo_map` for
+  whole-codebase “vision”.
+- Auto-pick chat & completion models from system RAM
+  (`scripts/pick-models.sh` / `.ps1`).
+- Web search built-in (`/search`, auto-RAG, agent tool). DuckDuckGo
+  by default; Google CSE opt-in.
+- Full keyboard-navigable model picker.
+- Cross-OS installers: Ubuntu / macOS / Windows for both the VS Code
+  extension and the Vim/Neovim sister plugin.
+- Idempotent `scripts/publish-ubuntu.sh` (build → test → package →
+  verify → publish → tag).
+- 319-test suite with positive AND negative coverage in every area,
+  including 6 real end-to-end scenarios that compile and run.
+- Architectural invariants pinned (§3 of `ARCHITECTURE.md`): locality,
+  sandbox, modal user assent, bounded loop, **Ollama has no
+  filesystem access — the plugin owns all I/O**.
 
 Make the architectural invariant *“Ollama has no filesystem access; the
 plugin owns all I/O”* explicit in three places that can never drift

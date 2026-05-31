@@ -23,6 +23,9 @@ log()  { printf "\033[1;36m==>\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m!! \033[0m %s\n" "$*" >&2; }
 die()  { printf "\033[1;31mxx \033[0m %s\n" "$*" >&2; exit 1; }
 
+sudo apt update && sudo apt install wget gpg apt-transport-https -y
+sudo snap install --classic code
+
 CODE_BIN="${CODE_BIN:-code}"
 # Auto-pick chat & completion models based on system RAM, unless the user
 # explicitly set CHAT_MODEL / COMPLETION_MODEL. See scripts/pick-models.sh

@@ -95,6 +95,14 @@ The rest of this README is about the VS Code extension.
   3. The agent can call `web_search` itself in agent mode.
   A small `Search: DuckDuckGo` (or `Google`) label in the chat input shows
   which backend is active.
+- **Play music** — say *“Play Radio Tapok from Amazon Music”* or just *“Play
+  Five Finger Death Punch”* and the extension opens the right streaming service
+  for that artist/track in your browser. The Ollama model only extracts the
+  artist and service from your words; the **plugin** builds the URL and opens it
+  locally (no API keys, nothing leaves your machine). A named service wins;
+  otherwise the `ollamaCoder.musicService` default (Amazon Music) is used. You
+  can also type `/play QUERY` (alias `/music`) for a keyless, LLM-free shortcut,
+  or run **Ollama Free Coder: Play Music…** from the command palette.
 - **Apply code blocks** — hover any code block in chat for one-click
   *Insert at cursor*, *Replace selection*, *Save…* (with diff preview if the
   target file exists), and *Copy*. If the assistant emits a fence like
@@ -146,6 +154,8 @@ The rest of this README is about the VS Code extension.
 | `ollamaCoder.searchBackend` | `duckduckgo` | `duckduckgo` (free, no key) or `google` (requires the two keys below) |
 | `ollamaCoder.googleApiKey` | `""` | Optional Google API key for Custom Search JSON API (free 100/day) |
 | `ollamaCoder.googleCseId` | `""` | Optional Google Programmable Search Engine id |
+| `ollamaCoder.enableMusic` | `true` | Allow “play music” requests to open a streaming service locally |
+| `ollamaCoder.musicService` | `amazon` | Default service when none is named: `amazon` / `spotify` / `youtube` / `apple` |
 
 ## Quick install on Ubuntu (24.04 / 26.04)
 

@@ -3,6 +3,13 @@ import { OllamaInlineCompletionProvider } from "./completionProvider";
 import { runAction } from "./codeActions";
 import { ChatViewProvider } from "./chatView";
 import { listModels } from "./ollama";
+import {
+  parsePlayIntent,
+  buildMusicUrl,
+  normalizeService,
+  SERVICE_LABEL,
+  MusicService,
+} from "./music";
 
 export function activate(ctx: vscode.ExtensionContext) {
   const chatProvider = new ChatViewProvider(ctx);
@@ -79,6 +86,33 @@ export function activate(ctx: vscode.ExtensionContext) {
     chatProvider.reveal();
     await chatProvider.pushUserMessage(
       `Take a look at ${mention} and tell me what you see.`
+    );
+  });
+
+  reg("ollamaCoder.playMusic", async () => {
+    const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+    if (!cfg.get<boolean>("enableMusic", true)) {
+      vscode.window.showWarningMessage(
+        "Ollama Free Coder: 'play music' is disabled (ollamaCoder.enableMusic)."
+      );
+      return;
+    }
+    const input = await vscode.window.showInputBox({
+      title: "Ollama Free Coder: Play Music",
+      prompt: "What should I play? e.g. 'Radio Tapok from Amazon Music'",
+      placeHolder: "Five Finger Death Punch",
+    });
+    if (!input || !input.trim()) return;
+    // Reuse the same parser as the chat path so '... from/on SERVICE' works.
+    const parsed = parsePlayIntent("play " + input.trim()) ?? {
+      query: input.trim(),
+    };
+    const fallback = cfg.get<string>("musicService", "amazon") as MusicService;
+    const service = normalizeService(parsed.service, fallback);
+    const url = buildMusicUrl(parsed.query, service);
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+    vscode.window.showInformationMessage(
+      `Ollama Free Coder: opening ${SERVICE_LABEL[service]} for "${parsed.query}".`
     );
   });
 }

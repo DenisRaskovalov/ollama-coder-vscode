@@ -7,6 +7,13 @@ import { routeWithModel, RoutePlan } from "./router";
 import { runAgentLoop as runAgentLoopPure } from "./agentLoop";
 import { extractCodeBlocks, guessFilenameForLang } from "./extractCodeBlocks";
 import { detectProblemRef } from "./problemRef";
+import {
+  parsePlayIntent,
+  buildMusicUrl,
+  normalizeService,
+  SERVICE_LABEL,
+  MusicService,
+} from "./music";
 
 const SYSTEM_BASIC =
   "You are Ollama Free Coder, an expert pair-programmer running locally inside the user's VS Code. " +
@@ -120,6 +127,21 @@ export function looksLikeWebSearchIntent(text: string): boolean {
 export function parseSlashSearch(text: string): string | null {
   const m = text.match(/^\s*\/(search|web|google)\s+([\s\S]+)$/i);
   return m ? m[2].trim() : null;
+}
+
+/**
+ * Slash command parser for music. Recognised:
+ *   /play  <query>
+ *   /music <query>
+ * The query may end with "from/on SERVICE" — parsePlayIntent handles that, so
+ * we just hand it the text after the slash word prefixed with "play ".
+ */
+export function parsePlaySlash(
+  text: string
+): { query: string; service?: string } | null {
+  const m = text.match(/^\s*\/(play|music)\s+([\s\S]+)$/i);
+  if (!m) return null;
+  return parsePlayIntent("play " + m[2].trim());
 }
 
 function formatSearchResults(
@@ -385,6 +407,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: "assistantEnd" });
   }
 
+  /**
+   * Open a streaming service for the requested music. This is the *plugin*
+   * performing the action on the user's machine (ARCHITECTURE.md Invariant 8):
+   * the model only labelled the intent; we build the URL and open it via
+   * vscode.env.openExternal. No worker turn runs.
+   *
+   * @param rawText  the original user message (for the chat log + history)
+   * @param query    the artist / song / album to play
+   * @param service  the raw service string the user/router named (may be undefined)
+   */
+  private async playMusic(
+    rawText: string,
+    query: string,
+    service: string | undefined
+  ): Promise<void> {
+    this.post({ type: "userMessage", text: rawText });
+    await this.rememberCommand(rawText);
+
+    const cfg = vscode.workspace.getConfiguration("ollamaCoder");
+    const fallback = cfg.get<string>("musicService", "amazon") as MusicService;
+    const resolved = normalizeService(service, fallback);
+    const url = buildMusicUrl(query, resolved);
+    const label = SERVICE_LABEL[resolved];
+
+    this.post({ type: "assistantStart" });
+    try {
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+      this.post({
+        type: "assistantToken",
+        text:
+          `▶ Opening ${label} for **${query}**.\n\n` +
+          `${url}\n\n` +
+          `Press play on the result (no track auto-starts — this is a ` +
+          `keyless, fully-local action that just opens the service).`,
+      });
+    } catch (e: any) {
+      this.post({
+        type: "assistantError",
+        text: `Could not open ${label}: ${e?.message ?? e}`,
+      });
+      return;
+    }
+    this.post({ type: "assistantEnd" });
+  }
+
   reveal() {
     this.view?.show?.(true);
   }
@@ -478,6 +545,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.post({ type: "userMessage", text });
       await this.rememberCommand(text);
       await this.runDirectSearch(slashQuery);
+      return;
+    }
+
+    // Slash command: '/play QUERY' (alias '/music') opens a streaming service
+    // for the requested music. No LLM involved.
+    const slashPlay = parsePlaySlash(text);
+    if (slashPlay) {
+      await this.playMusic(text, slashPlay.query, slashPlay.service);
       return;
     }
     const model =
@@ -583,6 +658,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (useLlmRouter && routerPlan) {
+      // Music short-circuit: open the streaming service and stop. No worker
+      // turn, no file logic — the action is purely "open a URL locally".
+      if (
+        routerPlan.kind === "play_music" &&
+        cfg.get<boolean>("enableMusic", true) &&
+        routerPlan.music_query
+      ) {
+        await this.playMusic(text, routerPlan.music_query, routerPlan.music_service);
+        return;
+      }
+
       // Authoritative LLM-driven routing. Build a hint block from every
       // optional field the router populated, so the worker model gets the
       // same signals the old regex pipeline would have computed.
@@ -629,7 +715,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
     } else {
-      // Existing regex pipeline (still authoritative when LLM router off).
+      // Existing regex pipeline (still authoritative when LLM router off, or
+      // when it returned null and we fell back).
+      // Music short-circuit (regex fallback): open the streaming service.
+      if (cfg.get<boolean>("enableMusic", true)) {
+        const play = parsePlayIntent(text);
+        if (play) {
+          await this.playMusic(text, play.query, play.service);
+          return;
+        }
+      }
       if (!agent && intent && showIntent) {
         this.post({
           type: "notice",

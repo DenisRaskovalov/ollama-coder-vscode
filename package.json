@@ -131,6 +131,23 @@
           "type": "number",
           "default": 30000,
           "description": "Maximum wall-clock time (ms) a single run_command invocation may take before it's killed."
+        },
+        "ollamaCoder.enableMusic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow 'play music' requests (e.g. 'Play Radio Tapok from Amazon Music') to open a streaming service in your browser/app. The model only extracts the artist & service; the plugin opens the URL locally."
+        },
+        "ollamaCoder.musicService": {
+          "type": "string",
+          "enum": ["amazon", "spotify", "youtube", "apple"],
+          "enumDescriptions": [
+            "Amazon Music (music.amazon.com)",
+            "Spotify (open.spotify.com)",
+            "YouTube Music (music.youtube.com)",
+            "Apple Music (music.apple.com)"
+          ],
+          "default": "amazon",
+          "description": "Default streaming service used when a 'play music' request doesn't name one. A service named in the request (e.g. '...from Spotify') always wins."
         }
       }
     },
@@ -174,6 +191,10 @@
       {
         "command": "ollamaCoder.addFileToChat",
         "title": "Ollama Free Coder: Add File/Selection to Chat"
+      },
+      {
+        "command": "ollamaCoder.playMusic",
+        "title": "Ollama Free Coder: Play Music..."
       }
     ],
     "viewsContainers": {

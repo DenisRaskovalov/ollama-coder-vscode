@@ -19,7 +19,8 @@ export type RouteKind =
   | "web_search_then_chat" // RAG: fetch web first, then chat
   | "explain_selection"    // analyse the current editor selection
   | "refactor_selection"   // rewrite the current selection in-place
-  | "run_command";         // shell command via run_command tool
+  | "run_command"          // shell command via run_command tool
+  | "play_music";          // open a streaming service for the requested music
 
 export interface RoutePlan {
   kind: RouteKind;
@@ -46,6 +47,17 @@ export interface RoutePlan {
   problem_source?: string;
   problem_id?: string;
   /**
+   * For kind "play_music": the artist / track / album to play, extracted from
+   * the request. Required when kind is play_music.
+   */
+  music_query?: string;
+  /**
+   * For kind "play_music": the streaming service the user named, if any
+   * ("amazon", "spotify", "youtube", "apple"). Optional — the plugin falls
+   * back to the ollamaCoder.musicService setting when absent.
+   */
+  music_service?: string;
+  /**
    * The user's prompt, optionally cleaned up by the router. Passed on to the
    * worker model instead of the raw text. Always non-empty.
    */
@@ -62,6 +74,7 @@ const VALID_KINDS: RouteKind[] = [
   "explain_selection",
   "refactor_selection",
   "run_command",
+  "play_music",
 ];
 
 export const ROUTER_SYSTEM_PROMPT =
@@ -78,6 +91,7 @@ export const ROUTER_SYSTEM_PROMPT =
   "                    explain_selection     (explain the active editor selection)\n" +
   "                    refactor_selection    (rewrite the active editor selection)\n" +
   "                    run_command           (execute a shell command)\n" +
+  "                    play_music            (open a streaming service to play music)\n" +
   "  target_path:    workspace-relative path. REQUIRED for create_file and edit_file.\n" +
   "  language:       'python' | 'cpp' | 'rust' | 'typescript' | 'javascript' | ...\n" +
   "                  Set when you can infer the language. Used to choose a sensible filename.\n" +
@@ -87,6 +101,9 @@ export const ROUTER_SYSTEM_PROMPT =
   "                  the request mentions a problem from those sites.\n" +
   "  problem_id:     the problem identifier when problem_source is set (e.g. '1000', '1234A',\n" +
   "                  '2022 day 17').\n" +
+  "  music_query:    for play_music: the artist / song / album to play. REQUIRED for play_music.\n" +
+  "  music_service:  for play_music: 'amazon' | 'spotify' | 'youtube' | 'apple' when the user\n" +
+  "                  named one. Omit if they didn't.\n" +
   "  rephrased:      the user request, optionally cleaned up. NEVER empty.\n" +
   "  reason:         one-sentence explanation; shown in the UI.\n" +
   "\n" +
@@ -104,13 +121,17 @@ export const ROUTER_SYSTEM_PROMPT =
   "   -> explain_selection or refactor_selection.\n" +
   "6. 'run / execute SHELL_COMMAND'\n" +
   "   -> run_command.\n" +
-  "7. Competitive-programming references win over case 3 with extra fields:\n" +
+  "7. 'play / put on / turn on / start playing ARTIST or SONG [from/on SERVICE]'\n" +
+  "   -> play_music with music_query=the artist/song/album. Set music_service to\n" +
+  "   amazon|spotify|youtube|apple when the user named one; omit it otherwise.\n" +
+  "   ('play around with', 'play a game', 'how to play audio in code' are NOT music.)\n" +
+  "8. Competitive-programming references win over case 3 with extra fields:\n" +
   "   'LeetCode N'         -> create_file, target_path='leetcode_N.py',          problem_source='LeetCode',       problem_id='N'\n" +
   "   'Codeforces NL'      -> create_file, target_path='codeforces_NL.py',       problem_source='Codeforces',     problem_id='NL'\n" +
   "   'Project Euler N'    -> create_file, target_path='project_euler_N.py',     problem_source='Project Euler',  problem_id='N'\n" +
   "   'AoC YYYY day D'     -> create_file, target_path='aoc_YYYY_dayD.py',       problem_source='Advent of Code', problem_id='YYYY day D'\n" +
   "   Always default to .py unless the user explicitly named another language.\n" +
-  "8. Otherwise -> chat.\n" +
+  "9. Otherwise -> chat.\n" +
   "\n" +
   "You MUST return valid JSON. Do not include code fences. Do not add commentary.";
 
@@ -143,6 +164,12 @@ export function isValidRoutePlan(x: unknown): x is RoutePlan {
   } else if (o.target_path !== undefined && typeof o.target_path !== "string") {
     return false;
   }
+  if (o.kind === "play_music") {
+    if (typeof o.music_query !== "string" || !o.music_query.trim()) return false;
+  } else if (o.music_query !== undefined && typeof o.music_query !== "string") {
+    return false;
+  }
+  if (o.music_service !== undefined && typeof o.music_service !== "string") return false;
   if (o.reason !== undefined && typeof o.reason !== "string") return false;
   if (o.language !== undefined && typeof o.language !== "string") return false;
   if (o.needs_web !== undefined && typeof o.needs_web !== "boolean") return false;
@@ -197,6 +224,12 @@ export function coerceRoutePlan(
   }
   if (typeof candidate.problem_id === "string" && candidate.problem_id.trim()) {
     plan.problem_id = candidate.problem_id.trim();
+  }
+  if (typeof candidate.music_query === "string" && candidate.music_query.trim()) {
+    plan.music_query = candidate.music_query.trim();
+  }
+  if (typeof candidate.music_service === "string" && candidate.music_service.trim()) {
+    plan.music_service = candidate.music_service.trim();
   }
   return isValidRoutePlan(plan) ? plan : null;
 }

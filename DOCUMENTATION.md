@@ -183,6 +183,34 @@ cancellable VS Code notification.
 
 ---
 
+## 7A. Play music
+
+A small "language understanding in, local action out" feature (the same shape
+as everything else here). Implemented in `src/music.ts` (pure logic) and
+`src/chatView.ts` / `src/extension.ts` (the action).
+
+- **Intent** comes from one of three layers, in order: the LLM router
+  (`kind: "play_music"` with `music_query` / `music_service`), a conservative
+  regex fallback (`parsePlayIntent` in `music.ts`, used when the router is off
+  or returns null), or the `/play QUERY` (alias `/music`) slash command.
+- **`music.ts` is pure** — it parses the request, normalizes the service name
+  to one of `amazon | spotify | youtube | apple`, and builds the service's
+  search URL (`buildMusicUrl`). No I/O.
+- **The plugin performs the action**: `chatView.playMusic()` (and the
+  `ollamaCoder.playMusic` command) call `vscode.env.openExternal(...)` to open
+  that URL in the user's default browser/app. This honors Invariant 8 in
+  `ARCHITECTURE.md` — the model only labels; the plugin opens the URL locally.
+  `openExternal` is not filesystem/`child_process` I/O, so it doesn't widen the
+  `test/ioBoundary.test.js` allowlist.
+- **No keys, nothing leaves the machine** beyond the streaming URL you opened.
+  Because there's no keyless, cross-service way to auto-start a *specific*
+  track, we open the service's search for the query and you press play.
+- Controlled by `ollamaCoder.enableMusic` (default on) and
+  `ollamaCoder.musicService` (default `amazon`; a service named in the request
+  always wins).
+
+---
+
 ## 8. Source tree
 
 ```
@@ -213,9 +241,11 @@ ollama-coder-vscode/
     │                              streaming render with apply buttons, agent loop
     ├── apply.ts                 insertAtCursor / replaceSelection / saveToFile
     │                              (with diff preview before overwrite)
-    └── tools.ts                 Agent tool schemas + executors:
-                                   read_file, list_files, search_text,
-                                   write_file, get_open_editors
+    ├── tools.ts                 Agent tool schemas + executors:
+    │                              read_file, list_files, search_text,
+    │                              write_file, get_open_editors
+    └── music.ts                 Pure "play music" helpers: parsePlayIntent,
+                                   normalizeService, buildMusicUrl (no I/O)
 ```
 
 ---
@@ -235,6 +265,8 @@ All under the `ollamaCoder.*` namespace.
 | `temperature` | `0.2` | inline completion + chat + actions |
 | `contextWindowChars` | `4000` | how much surrounding code is sent |
 | `agentMaxSteps` | `8` | agent tool-calling loop cap |
+| `enableMusic` | `true` | allow “play music” requests to open a streaming service |
+| `musicService` | `amazon` | default service when a request names none |
 
 ---
 

@@ -229,7 +229,9 @@ small, fast model. The router's job is to return a structured plan:
 ```json
 {
   "kind":          "chat" | "edit_file" | "create_file" | "web_search_then_chat" |
-                   "explain_selection" | "refactor_selection" | …,
+                   "explain_selection" | "refactor_selection" | "play_music" | …,
+  "music_query":   "Radio Tapok"  // when kind == play_music (artist/song/album)
+  "music_service": "amazon"       // optional: amazon|spotify|youtube|apple
   "target_path":   "src/foo.ts"   // when kind ∈ {edit_file, create_file}
                                   // else absent
   "needs_web":     true | false,
@@ -397,6 +399,7 @@ Nothing happens "elsewhere".
 | **Router model** | A small fast model used only for routing decisions. Defaults to the completion model. |
 | **Tool** | One of `read_file`, `write_file`, `list_files`, `search_text`, `web_search`, `get_open_editors`. Defined in `src/tools.ts`. |
 | **Side effect** | Anything that touches disk or editor state outside of the chat panel. |
+| **play_music** | A route kind: the model extracts `music_query`/`music_service`; the plugin opens the service's search URL via `vscode.env.openExternal`. Pure URL logic lives in `src/music.ts`. |
 | **Sandbox** | The workspace root. Tools cannot escape it. |
 | **Worker turn** | One `POST /api/chat`. |
 | **Agent turn** | A chain of worker turns separated by tool executions. Bounded by `agentMaxSteps`. |

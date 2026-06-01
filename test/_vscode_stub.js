@@ -35,8 +35,12 @@ module.exports = {
   languages: {
     registerInlineCompletionItemProvider: () => ({ dispose() {} }),
   },
+  env: {
+    openExternal: async () => true,
+  },
   Uri: {
     joinPath: (...parts) => ({ fsPath: parts.join("/"), path: parts.join("/") }),
+    parse: (s) => ({ toString: () => String(s), fsPath: String(s) }),
   },
   Range: class {},
   Position: class {},

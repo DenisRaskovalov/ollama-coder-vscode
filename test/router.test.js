@@ -70,6 +70,41 @@ test("isValidRoutePlan requires target_path for create_file/edit_file", () => {
   );
 });
 
+test("isValidRoutePlan requires music_query for play_music", () => {
+  assert.equal(
+    isValidRoutePlan({ kind: "play_music", rephrased: "x" }),
+    false,
+    "play_music without music_query must reject"
+  );
+  assert.equal(
+    isValidRoutePlan({
+      kind: "play_music",
+      rephrased: "x",
+      music_query: "Radio Tapok",
+    }),
+    true
+  );
+  assert.equal(
+    isValidRoutePlan({
+      kind: "play_music",
+      rephrased: "x",
+      music_query: "Radio Tapok",
+      music_service: "amazon",
+    }),
+    true
+  );
+  assert.equal(
+    isValidRoutePlan({
+      kind: "play_music",
+      rephrased: "x",
+      music_query: "Radio Tapok",
+      music_service: 5,
+    }),
+    false,
+    "non-string music_service must reject"
+  );
+});
+
 test("isValidRoutePlan rejects unknown kinds", () => {
   assert.equal(
     isValidRoutePlan({ kind: "delete_everything", rephrased: "x" }),
@@ -100,6 +135,29 @@ test("coerceRoutePlan passes a clean plan through", () => {
     "fallback"
   );
   assert.deepEqual(plan, { kind: "chat", rephrased: "hello" });
+});
+
+test("coerceRoutePlan keeps music fields for a play_music plan", () => {
+  const plan = coerceRoutePlan(
+    {
+      kind: "play_music",
+      rephrased: "play Radio Tapok",
+      music_query: "  Radio Tapok ",
+      music_service: " Amazon Music ",
+    },
+    "fallback"
+  );
+  assert.ok(plan);
+  assert.equal(plan.kind, "play_music");
+  assert.equal(plan.music_query, "Radio Tapok");
+  assert.equal(plan.music_service, "Amazon Music");
+});
+
+test("coerceRoutePlan rejects play_music with no music_query", () => {
+  assert.equal(
+    coerceRoutePlan({ kind: "play_music", rephrased: "play" }, "fallback"),
+    null
+  );
 });
 
 test("coerceRoutePlan fills in rephrased from fallback when missing", () => {
@@ -255,6 +313,8 @@ test("ROUTER_SYSTEM_PROMPT mentions every routing rule keyword", () => {
     "explain_selection",
     "refactor_selection",
     "run_command",
+    "play_music",
+    "music_query",
     "rephrased",
     "target_path",
   ]) {
